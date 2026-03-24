@@ -1,0 +1,18 @@
+packages:
+  "framer-motion": "For smooth transitions between chat phases and message bubbles"
+  "react-markdown": "To safely render formatted text and lists from the AI"
+  "lucide-react": "For UI icons"
+  "clsx": "Utility for constructing className strings conditionally"
+  "tailwind-merge": "Utility to merge tailwind classes without style conflicts"
+
+images:
+  - path: "artifacts/chatbot-colaboradores/public/images/welcome-hero.png"
+    description: "Clean, abstract 3D illustration representing professional growth and learning, featuring soft glowing geometric shapes and an upward trajectory, corporate color palette with warm teal, soft orange, and off-white background, minimal and premium"
+    aspect_ratio: "16:9"
+  - path: "artifacts/chatbot-colaboradores/public/images/avatar-ai.png"
+    description: "A friendly, professional abstract AI avatar icon, soft glowing teal and orange gradients, clean white background, modern corporate style"
+    aspect_ratio: "1:1"
+
+notes:
+  - "Assuming backend API requires manual SSE parsing for the chat streaming endpoint."
+  - "The signal to transition to results will be a heuristic: looking for keywords like 'áreas de oportunidad' or 'recomendaciones' in the assistant's response, or showing a manual transition button after 6 messages to ensure the user can always proceed."
