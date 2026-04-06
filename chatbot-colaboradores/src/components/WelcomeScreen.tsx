@@ -1,12 +1,20 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ArrowRight, Sparkles, ChevronRight } from 'lucide-react';
+import { Link } from 'wouter';
 import { cn } from '@/lib/utils';
 import { useMutation } from '@tanstack/react-query';
 
 interface WelcomeScreenProps {
-  onStart: (conversationId: number, profile: string, level: string) => void;
+  onStart: (conversationId: number, profile: string, level: string, userName: string, userEmail: string) => void;
+  hasSavedSession?: boolean;
+  onResumeSession?: () => void;
+  onStartFresh?: () => void;
 }
+
+const CHAT_STORAGE_KEY = 'uix-chat-session-v1';
+
+const normalizeEmail = (value: string): string => value.trim().toLowerCase();
 
 const UXUI_SUB_PROFILES = [
   { id: 'writer', label: 'Writer', icon: '✍️', desc: 'Redacción UX, microcopy y contenido de producto' },
@@ -39,27 +47,29 @@ function CheckIcon() {
   );
 }
 
-export function WelcomeScreen({ onStart }: WelcomeScreenProps) {
+export function WelcomeScreen({ onStart, hasSavedSession = false, onResumeSession, onStartFresh }: WelcomeScreenProps) {
   const [step, setStep] = useState<'intro' | 'profile'>('intro');
   const [expandedGroup, setExpandedGroup] = useState<string | null>(null);
   const [selectedProfile, setSelectedProfile] = useState<string>('');
+  const [userName, setUserName] = useState<string>('');
+  const [userEmail, setUserEmail] = useState<string>('');
+  const [hasSavedSessionForEmail, setHasSavedSessionForEmail] = useState(false);
+
+  const isValidEmail = (value: string) => /\S+@\S+\.\S+/.test(value.trim());
 
   const createConversation = useMutation({
     mutationFn: async ({ profile }: { profile: string }) => {
-      const res = await fetch('/api/openai/conversations', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          title: `Evaluación ${profile} — ${new Date().toLocaleDateString('es-MX')}`,
-          profile,
-          level: 'Auto',
-        }),
-      });
-      if (!res.ok) throw new Error('Error al crear conversación');
-      return res.json();
+      // Mock response for development - simulate API delay
+      await new Promise(resolve => setTimeout(resolve, 500));
+      return {
+        id: Date.now(), // Mock conversation ID
+        title: `Evaluación ${profile} — ${new Date().toLocaleDateString('es-MX')}`,
+        profile,
+        level: 'Auto',
+      };
     },
     onSuccess: (data) => {
-      onStart(data.id, selectedProfile, 'Auto');
+      onStart(data.id, selectedProfile, 'Auto', userName.trim(), userEmail.trim());
     },
   });
 
@@ -79,7 +89,40 @@ export function WelcomeScreen({ onStart }: WelcomeScreenProps) {
     setSelectedProfile(subLabel);
   };
 
-  const canStart = selectedProfile !== '';
+  const canStart = selectedProfile !== '' && userName.trim().length > 0 && isValidEmail(userEmail);
+  const showResumeOptionsInProfile = isValidEmail(userEmail) && (hasSavedSessionForEmail || hasSavedSession);
+
+  useEffect(() => {
+    const email = normalizeEmail(userEmail);
+    if (!email) {
+      setHasSavedSessionForEmail(false);
+      return;
+    }
+
+    try {
+      const raw = localStorage.getItem(CHAT_STORAGE_KEY);
+      if (!raw) {
+        setHasSavedSessionForEmail(false);
+        return;
+      }
+
+      const parsed = JSON.parse(raw) as {
+        employeeEmail?: string;
+        conversationId?: number | null;
+        finalReport?: string;
+        messages?: Array<unknown>;
+      };
+
+      const storedEmail = normalizeEmail(parsed.employeeEmail || '');
+      const hasContent = Boolean(parsed.conversationId)
+        || Boolean(parsed.finalReport)
+        || (Array.isArray(parsed.messages) && parsed.messages.length > 0);
+
+      setHasSavedSessionForEmail(storedEmail === email && hasContent);
+    } catch {
+      setHasSavedSessionForEmail(false);
+    }
+  }, [userEmail]);
 
   const handleStart = () => {
     if (!canStart) return;
@@ -104,6 +147,11 @@ export function WelcomeScreen({ onStart }: WelcomeScreenProps) {
           animate={{ opacity: 1, y: 0 }}
           className="flex flex-col items-center mb-8 text-center"
         >
+          <div className="w-full flex justify-end mb-4">
+            <Link href="/capital-humano" className="inline-flex items-center gap-2 px-3 py-2 rounded-xl glass-card border border-white/10 text-xs font-medium text-foreground hover:border-primary/40 transition-colors">
+              <span>Vista Capital Humano</span>
+            </Link>
+          </div>
           <img
             src={`${import.meta.env.BASE_URL}images/uix-logo.png`}
             alt="UIX"
@@ -111,7 +159,7 @@ export function WelcomeScreen({ onStart }: WelcomeScreenProps) {
           />
           <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full glass-card text-xs font-medium text-muted-foreground border border-white/10 mb-4">
             <Sparkles className="w-3.5 h-3.5 text-secondary" />
-            <span>Asistente de Desarrollo Profesional · UIX</span>
+            <span>Asistente UiX</span>
           </div>
           <h1 className="text-4xl md:text-5xl font-display font-bold leading-tight">
             Descubre tu{' '}
@@ -136,7 +184,7 @@ export function WelcomeScreen({ onStart }: WelcomeScreenProps) {
                 {[
                   { label: '6-8 preguntas', icon: '💬' },
                   { label: '~5 minutos', icon: '⏱️' },
-                  { label: '3 recursos', icon: '📚' },
+                  { label: '5 recursos', icon: '📚' },
                 ].map(item => (
                   <div key={item.label} className="glass-card rounded-2xl p-3 text-center border border-white/8">
                     <div className="text-xl mb-1">{item.icon}</div>
@@ -145,13 +193,35 @@ export function WelcomeScreen({ onStart }: WelcomeScreenProps) {
                 ))}
               </div>
 
-              <button
-                onClick={() => setStep('profile')}
-                className="w-full group flex items-center justify-center gap-2.5 py-4 rounded-2xl font-semibold text-white btn-brand"
-              >
-                <span>Comenzar evaluación</span>
-                <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform duration-200" />
-              </button>
+              {hasSavedSession ? (
+                <div className="space-y-3">
+                  <button
+                    onClick={() => onResumeSession?.()}
+                    className="w-full group flex items-center justify-center gap-2.5 py-4 rounded-2xl font-semibold text-white btn-brand"
+                  >
+                    <span>Continuar conversación anterior</span>
+                    <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform duration-200" />
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      onStartFresh?.();
+                      setStep('profile');
+                    }}
+                    className="w-full group flex items-center justify-center gap-2.5 py-4 rounded-2xl font-semibold text-foreground glass-card border border-white/12 hover:border-white/25 transition-all duration-200"
+                  >
+                    <span>Iniciar nueva evaluación</span>
+                  </button>
+                </div>
+              ) : (
+                <button
+                  onClick={() => setStep('profile')}
+                  className="w-full group flex items-center justify-center gap-2.5 py-4 rounded-2xl font-semibold text-white btn-brand"
+                >
+                  <span>Comenzar evaluación</span>
+                  <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform duration-200" />
+                </button>
+              )}
             </motion.div>
           )}
 
@@ -163,6 +233,55 @@ export function WelcomeScreen({ onStart }: WelcomeScreenProps) {
               exit={{ opacity: 0, y: -20 }}
               className="space-y-5"
             >
+              <div>
+                <label className="block text-sm font-medium text-foreground mb-1">¿Cuál es tu nombre?</label>
+                <input
+                  type="text"
+                  value={userName}
+                  onChange={(e) => setUserName(e.target.value)}
+                  placeholder="Escribe tu nombre"
+                  className="w-full rounded-xl border border-white/10 bg-transparent px-3.5 py-2 text-sm text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-foreground mb-1">Correo para seguimiento</label>
+                <input
+                  type="email"
+                  value={userEmail}
+                  onChange={(e) => setUserEmail(e.target.value)}
+                  placeholder="nombre@uix.com"
+                  className="w-full rounded-xl border border-white/10 bg-transparent px-3.5 py-2 text-sm text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                />
+                {userEmail.trim().length > 0 && !isValidEmail(userEmail) && (
+                  <p className="mt-1 text-xs text-rose-300">Ingresa un correo válido para habilitar el inicio.</p>
+                )}
+              </div>
+
+              {showResumeOptionsInProfile && (
+                <div className="space-y-2 rounded-2xl border border-secondary/25 bg-secondary/10 p-3.5">
+                  <p className="text-xs text-secondary font-medium">
+                    {hasSavedSessionForEmail
+                      ? 'Detectamos una conversación guardada para este correo.'
+                      : 'Detectamos una conversación guardada en este navegador.'}
+                  </p>
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    <button
+                      onClick={() => onResumeSession?.()}
+                      className="w-full rounded-xl py-2.5 text-sm font-semibold text-foreground glass-card border border-white/12 hover:border-primary/40 transition-colors"
+                    >
+                      Retomar conversación
+                    </button>
+                    <button
+                      onClick={() => onStartFresh?.()}
+                      className="w-full rounded-xl py-2.5 text-sm font-semibold text-white btn-brand"
+                    >
+                      Empezar nueva
+                    </button>
+                  </div>
+                </div>
+              )}
+
               <p className="text-sm font-semibold text-foreground">
                 ¿Cuál es tu perfil?{' '}
                 <span className="text-muted-foreground font-normal">(selecciona uno)</span>

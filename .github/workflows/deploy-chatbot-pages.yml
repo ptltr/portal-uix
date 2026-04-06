@@ -1,0 +1,63 @@
+name: Deploy Chatbot To Pages
+
+on:
+  push:
+    branches: ["main"]
+    paths:
+      - "chatbot-colaboradores/**"
+      - ".github/workflows/deploy-chatbot-pages.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages-chatbot
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build chatbot app for Pages
+        env:
+          BASE_PATH: /portal-uix/
+        run: pnpm --filter ./chatbot-colaboradores... run build
+
+      - name: Add SPA fallback
+        run: cp chatbot-colaboradores/dist/index.html chatbot-colaboradores/dist/404.html
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: chatbot-colaboradores/dist
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

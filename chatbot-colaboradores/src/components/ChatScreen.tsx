@@ -1,9 +1,10 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Send, ArrowRight, User } from 'lucide-react';
+import { Send, ArrowRight, User, Download, ArrowLeft } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { cn } from '@/lib/utils';
 import { ChatMessage } from '@/hooks/use-chat';
+import { generatePDF } from '@/lib/generatePDF';
 import { TypingIndicator } from './TypingIndicator';
 
 interface ChatScreenProps {
@@ -12,8 +13,10 @@ interface ChatScreenProps {
   onSendMessage: (content: string) => void;
   isEvaluationComplete: boolean;
   onViewResults: () => void;
+  onBackToStart: () => void;
   profile: string;
   level: string;
+  finalReport: string;
 }
 
 export function ChatScreen({
@@ -22,12 +25,25 @@ export function ChatScreen({
   onSendMessage,
   isEvaluationComplete,
   onViewResults,
+  onBackToStart,
   profile,
   level,
+  finalReport,
 }: ChatScreenProps) {
   const [input, setInput] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  const handleDownloadPDF = () => {
+    if (finalReport) {
+      const today = new Date().toLocaleDateString('es-ES', {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric'
+      });
+      generatePDF(finalReport, profile, today);
+    }
+  };
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -88,7 +104,7 @@ export function ChatScreen({
             </div>
           </div>
           <div>
-            <h2 className="font-display font-semibold text-sm text-foreground">Asistente de Desarrollo</h2>
+            <h2 className="font-display font-semibold text-sm text-foreground">Asistente UiX</h2>
             <div className="flex items-center gap-2">
               <span className="w-1.5 h-1.5 rounded-full bg-secondary animate-pulse" />
               <span className="text-xs text-muted-foreground">En línea</span>
@@ -102,17 +118,39 @@ export function ChatScreen({
           </div>
         </div>
 
-        {isEvaluationComplete && (
-          <motion.button
-            initial={{ opacity: 0, scale: 0.9 }}
-            animate={{ opacity: 1, scale: 1 }}
-            onClick={onViewResults}
-            className="flex items-center gap-2 px-4 py-2 rounded-xl btn-brand text-sm font-semibold text-white"
+        <div className="flex items-center gap-2">
+          <button
+            onClick={onBackToStart}
+            className="flex items-center gap-2 px-3 py-2 rounded-xl glass-card border border-white/10 text-sm font-semibold text-foreground"
           >
-            <span>Ver Resultados</span>
-            <ArrowRight className="w-4 h-4" />
-          </motion.button>
-        )}
+            <ArrowLeft className="w-4 h-4" />
+            <span>Volver al inicio</span>
+          </button>
+
+          {isEvaluationComplete && (
+            <>
+              <motion.button
+                initial={{ opacity: 0, scale: 0.9 }}
+                animate={{ opacity: 1, scale: 1 }}
+                onClick={onViewResults}
+                className="flex items-center gap-2 px-4 py-2 rounded-xl glass-card border border-white/10 text-sm font-semibold text-foreground"
+              >
+                <ArrowRight className="w-4 h-4" />
+                <span>Ver avance</span>
+              </motion.button>
+
+              <motion.button
+                initial={{ opacity: 0, scale: 0.9 }}
+                animate={{ opacity: 1, scale: 1 }}
+                onClick={handleDownloadPDF}
+                className="flex items-center gap-2 px-4 py-2 rounded-xl btn-brand text-sm font-semibold text-white"
+              >
+                <Download className="w-4 h-4" />
+                <span>Descargar PDF</span>
+              </motion.button>
+            </>
+          )}
+        </div>
       </header>
 
       {/* Messages Area */}
