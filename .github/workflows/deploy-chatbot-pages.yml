@@ -40,6 +40,7 @@ jobs:
           cache: pnpm
 
       - name: Install dependencies
+        working-directory: chatbot-colaboradores
         run: pnpm install --no-frozen-lockfile
 
       - name: Build chatbot app for Pages
