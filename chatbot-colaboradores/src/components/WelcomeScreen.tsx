@@ -90,7 +90,8 @@ export function WelcomeScreen({ onStart, hasSavedSession = false, onResumeSessio
   };
 
   const canStart = selectedProfile !== '' && userName.trim().length > 0 && isValidEmail(userEmail);
-  const showResumeOptionsInProfile = isValidEmail(userEmail) && (hasSavedSessionForEmail || hasSavedSession);
+  const hasAnyResumeCandidate = hasSavedSessionForEmail || hasSavedSession;
+  const showResumeOptionsInProfile = isValidEmail(userEmail);
 
   useEffect(() => {
     const email = normalizeEmail(userEmail);
@@ -261,14 +262,20 @@ export function WelcomeScreen({ onStart, hasSavedSession = false, onResumeSessio
               {showResumeOptionsInProfile && (
                 <div className="space-y-2 rounded-2xl border border-secondary/25 bg-secondary/10 p-3.5">
                   <p className="text-xs text-secondary font-medium">
-                    {hasSavedSessionForEmail
-                      ? 'Detectamos una conversación guardada para este correo.'
-                      : 'Detectamos una conversación guardada en este navegador.'}
+                    {hasAnyResumeCandidate
+                      ? hasSavedSessionForEmail
+                        ? 'Detectamos una conversación guardada para este correo.'
+                        : 'Detectamos una conversación guardada en este navegador.'
+                      : 'Puedes retomar si ya existe historial para este correo en este navegador.'}
                   </p>
                   <div className="grid gap-2 sm:grid-cols-2">
                     <button
-                      onClick={() => onResumeSession?.()}
-                      className="w-full rounded-xl py-2.5 text-sm font-semibold text-foreground glass-card border border-white/12 hover:border-primary/40 transition-colors"
+                      onClick={() => {
+                        if (!hasAnyResumeCandidate) return;
+                        onResumeSession?.();
+                      }}
+                      disabled={!hasAnyResumeCandidate}
+                      className="w-full rounded-xl py-2.5 text-sm font-semibold text-foreground glass-card border border-white/12 hover:border-primary/40 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       Retomar conversación
                     </button>
