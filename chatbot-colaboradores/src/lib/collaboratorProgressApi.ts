@@ -59,6 +59,10 @@ const getApiBaseUrl = (): string => {
   return fromEnv ? fromEnv.replace(/\/$/, "") : "";
 };
 
+export const isReminderBackendConfigured = (): boolean => {
+  return Boolean(getApiBaseUrl());
+};
+
 const getLocalProgressMap = (): Record<string, CollaboratorProgress> => {
   try {
     const raw = localStorage.getItem(LOCAL_PROGRESS_KEY);

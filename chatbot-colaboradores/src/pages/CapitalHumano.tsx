@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
 import { Link } from 'wouter';
 import { ArrowLeft, LockKeyhole, LogOut, Mail, TrendingUp, Users, ClipboardList } from 'lucide-react';
-import { listCollaboratorsProgress, sendProgressReminder, type CollaboratorProgress } from '@/lib/collaboratorProgressApi';
+import { isReminderBackendConfigured, listCollaboratorsProgress, sendProgressReminder, type CollaboratorProgress } from '@/lib/collaboratorProgressApi';
 import { authenticateCapitalHumano, clearCapitalHumanoAuth, isCapitalHumanoAuthenticated, isUsingDefaultCapitalHumanoCode } from '@/lib/capitalHumanoAuth';
 import { Progress } from '@/components/ui/progress';
 
@@ -56,6 +56,7 @@ export default function CapitalHumano() {
   const [isAuthorized, setIsAuthorized] = useState(() => isCapitalHumanoAuthenticated());
   const [sendingReminderByEmail, setSendingReminderByEmail] = useState<Record<string, boolean>>({});
   const [reminderFeedbackByEmail, setReminderFeedbackByEmail] = useState<Record<string, string>>({});
+  const autoReminderEnabled = isReminderBackendConfigured();
 
   useEffect(() => {
     if (!isAuthorized) {
@@ -117,6 +118,15 @@ export default function CapitalHumano() {
     const pendingCoursesCount = getPendingResourcesCount(collaborator);
     if (pendingCoursesCount <= 0) return;
 
+    if (!autoReminderEnabled) {
+      window.location.href = buildReminderMailto(collaborator);
+      setReminderFeedbackByEmail((prev) => ({
+        ...prev,
+        [email]: 'Se abrió tu cliente de correo con el recordatorio prellenado.',
+      }));
+      return;
+    }
+
     setReminderFeedbackByEmail((prev) => ({ ...prev, [email]: '' }));
     setSendingReminderByEmail((prev) => ({ ...prev, [email]: true }));
 
@@ -132,7 +142,7 @@ export default function CapitalHumano() {
     } catch {
       setReminderFeedbackByEmail((prev) => ({
         ...prev,
-        [email]: 'No fue posible enviar automaticamente. Puedes usar el envio manual.',
+        [email]: 'No fue posible enviar automáticamente. Puedes usar el envío manual.',
       }));
     } finally {
       setSendingReminderByEmail((prev) => ({ ...prev, [email]: false }));
@@ -309,14 +319,22 @@ export default function CapitalHumano() {
                             className="inline-flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold text-foreground border border-white/15 bg-white/10 hover:border-primary/40 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
                           >
                             <Mail className="w-4 h-4" />
-                            <span>{isSendingReminder ? 'Enviando...' : 'Enviar recordatorio'}</span>
+                            <span>
+                              {isSendingReminder
+                                ? 'Enviando...'
+                                : autoReminderEnabled
+                                  ? 'Enviar recordatorio'
+                                  : 'Enviar recordatorio'}
+                            </span>
                           </button>
-                          <a
-                            href={buildReminderMailto(collaborator)}
-                            className="text-xs text-foreground/70 hover:text-foreground underline"
-                          >
-                            Envio manual
-                          </a>
+                          {autoReminderEnabled ? (
+                            <a
+                              href={buildReminderMailto(collaborator)}
+                              className="text-xs text-foreground/70 hover:text-foreground underline"
+                            >
+                              Envío manual
+                            </a>
+                          ) : null}
                         </div>
                       </div>
                     ) : null}
