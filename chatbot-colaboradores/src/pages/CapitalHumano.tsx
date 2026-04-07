@@ -13,7 +13,18 @@ const statusMeta: Record<CollaboratorProgress['status'], { label: string; tone: 
 };
 
 const getPendingResourcesCount = (collaborator: CollaboratorProgress): number => {
-  return Math.max(collaborator.totalResourcesCount - collaborator.completedResourcesCount, 0);
+  const total = Math.max(collaborator.totalResourcesCount, collaborator.assignedResources.length, 1);
+  const completed = Math.min(collaborator.completedResourcesCount, total);
+  return Math.max(total - completed, 0);
+};
+
+const getDisplayStatus = (collaborator: CollaboratorProgress): CollaboratorProgress['status'] => {
+  const total = Math.max(collaborator.totalResourcesCount, collaborator.assignedResources.length, 1);
+  const completed = Math.min(collaborator.completedResourcesCount, total);
+
+  if (completed >= total) return 'completed';
+  if (completed > 0) return 'on-track';
+  return 'at-risk';
 };
 
 const buildReminderMailto = (collaborator: CollaboratorProgress): string => {
@@ -73,9 +84,9 @@ export default function CapitalHumano() {
 
   const summary = useMemo(() => {
     const total = collaborators.length;
-    const completed = collaborators.filter((item) => item.status === 'completed').length;
-    const onTrack = collaborators.filter((item) => item.status === 'on-track').length;
-    const atRisk = collaborators.filter((item) => item.status === 'at-risk').length;
+    const completed = collaborators.filter((item) => getDisplayStatus(item) === 'completed').length;
+    const onTrack = collaborators.filter((item) => getDisplayStatus(item) === 'on-track').length;
+    const atRisk = collaborators.filter((item) => getDisplayStatus(item) === 'at-risk').length;
     const pendingFollowUp = collaborators.filter((item) => getPendingResourcesCount(item) > 0).length;
     return { total, completed, onTrack, atRisk, pendingFollowUp };
   }, [collaborators]);
@@ -232,7 +243,7 @@ export default function CapitalHumano() {
           ) : (
             <div className="space-y-4">
               {collaborators.map((collaborator) => {
-                const meta = statusMeta[collaborator.status];
+                const meta = statusMeta[getDisplayStatus(collaborator)];
                 const pendingResources = getPendingResourcesCount(collaborator);
                 return (
                   <div key={collaborator.collaboratorEmail} className="rounded-2xl border border-white/8 bg-white/5 p-5 space-y-4">
