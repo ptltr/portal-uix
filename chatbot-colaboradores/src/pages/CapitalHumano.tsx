@@ -12,6 +12,30 @@ const statusMeta: Record<CollaboratorProgress['status'], { label: string; tone: 
   'completed': { label: 'Completado', tone: 'text-emerald-300', chip: 'rgba(16,185,129,0.14)' },
 };
 
+const getPendingResourcesCount = (collaborator: CollaboratorProgress): number => {
+  return Math.max(collaborator.totalResourcesCount - collaborator.completedResourcesCount, 0);
+};
+
+const buildReminderMailto = (collaborator: CollaboratorProgress): string => {
+  const pendingCount = getPendingResourcesCount(collaborator);
+  const completed = collaborator.completedResourcesCount;
+  const total = collaborator.totalResourcesCount;
+  const collaboratorLabel = collaborator.collaboratorName || collaborator.collaboratorEmail;
+
+  const subject = encodeURIComponent('Recordatorio de seguimiento - Plan de desarrollo UIX');
+  const body = encodeURIComponent(
+    `Hola ${collaboratorLabel},\n\n` +
+    `Te compartimos un recordatorio de seguimiento de tu plan de desarrollo en Asistente UiX.\n\n` +
+    `Avance actual: ${completed}/${total} recursos completados.\n` +
+    `Pendientes: ${pendingCount} recurso(s).\n\n` +
+    `Te invitamos a continuar con los cursos pendientes y registrar tu avance.\n\n` +
+    `Gracias,\n` +
+    `Capital Humano`
+  );
+
+  return `mailto:${collaborator.collaboratorEmail}?subject=${subject}&body=${body}`;
+};
+
 export default function CapitalHumano() {
   const [collaborators, setCollaborators] = useState<CollaboratorProgress[]>([]);
   const [loading, setLoading] = useState(true);
@@ -52,7 +76,8 @@ export default function CapitalHumano() {
     const completed = collaborators.filter((item) => item.status === 'completed').length;
     const onTrack = collaborators.filter((item) => item.status === 'on-track').length;
     const atRisk = collaborators.filter((item) => item.status === 'at-risk').length;
-    return { total, completed, onTrack, atRisk };
+    const pendingFollowUp = collaborators.filter((item) => getPendingResourcesCount(item) > 0).length;
+    return { total, completed, onTrack, atRisk, pendingFollowUp };
   }, [collaborators]);
 
   const handleLogin = () => {
@@ -179,12 +204,13 @@ export default function CapitalHumano() {
           </div>
         </div>
 
-        <div className="grid gap-4 md:grid-cols-4">
+        <div className="grid gap-4 md:grid-cols-5">
           {[
             { label: 'Colaboradores', value: summary.total, icon: Users },
             { label: 'Completados', value: summary.completed, icon: TrendingUp },
             { label: 'En curso', value: summary.onTrack, icon: ClipboardList },
             { label: 'Sin comenzar', value: summary.atRisk, icon: Mail },
+            { label: 'Requieren seguimiento', value: summary.pendingFollowUp, icon: Mail },
           ].map((item) => (
             <div key={item.label} className="glass-card rounded-2xl border border-white/8 p-5">
               <div className="flex items-center justify-between">
@@ -207,6 +233,7 @@ export default function CapitalHumano() {
             <div className="space-y-4">
               {collaborators.map((collaborator) => {
                 const meta = statusMeta[collaborator.status];
+                const pendingResources = getPendingResourcesCount(collaborator);
                 return (
                   <div key={collaborator.collaboratorEmail} className="rounded-2xl border border-white/8 bg-white/5 p-5 space-y-4">
                     <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-3">
@@ -222,6 +249,21 @@ export default function CapitalHumano() {
                         {meta.label}
                       </div>
                     </div>
+
+                    {pendingResources > 0 ? (
+                      <div className="rounded-xl border border-amber-300/20 bg-amber-400/10 p-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                        <p className="text-sm text-amber-100">
+                          Faltan {pendingResources} curso(s) por completar. Puedes enviar recordatorio al correo registrado.
+                        </p>
+                        <a
+                          href={buildReminderMailto(collaborator)}
+                          className="inline-flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold text-foreground border border-white/15 bg-white/10 hover:border-primary/40 transition-colors"
+                        >
+                          <Mail className="w-4 h-4" />
+                          <span>Enviar recordatorio</span>
+                        </a>
+                      </div>
+                    ) : null}
 
                     <div>
                       <div className="mb-2 flex items-center justify-between text-sm">
