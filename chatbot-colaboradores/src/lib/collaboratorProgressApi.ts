@@ -44,6 +44,14 @@ export interface SyncCollaboratorAssessmentPayload {
   assignedResources: string[];
 }
 
+export interface SendReminderPayload {
+  collaboratorEmail: string;
+  collaboratorName?: string;
+  pendingCoursesCount: number;
+  completedResourcesCount: number;
+  totalResourcesCount: number;
+}
+
 const LOCAL_PROGRESS_KEY = "uix-collaborator-progress-v1";
 
 const getApiBaseUrl = (): string => {
@@ -229,4 +237,24 @@ export const listCollaboratorsProgress = async (): Promise<CollaboratorProgress[
 
   const map = getLocalProgressMap();
   return Object.values(map).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+};
+
+export const sendProgressReminder = async (payload: SendReminderPayload): Promise<{ sent: boolean; id?: string }> => {
+  const baseUrl = getApiBaseUrl();
+
+  if (!baseUrl) {
+    throw new Error("Automatic reminder requires VITE_API_BASE_URL configuration.");
+  }
+
+  const response = await fetch(`${baseUrl}/api/collaborators/progress/reminders`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Failed to send reminder email: ${response.status}`);
+  }
+
+  return (await response.json()) as { sent: boolean; id?: string };
 };

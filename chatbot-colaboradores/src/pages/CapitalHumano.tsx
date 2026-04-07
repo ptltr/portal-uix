@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
 import { Link } from 'wouter';
 import { ArrowLeft, LockKeyhole, LogOut, Mail, TrendingUp, Users, ClipboardList } from 'lucide-react';
-import { listCollaboratorsProgress, type CollaboratorProgress } from '@/lib/collaboratorProgressApi';
+import { listCollaboratorsProgress, sendProgressReminder, type CollaboratorProgress } from '@/lib/collaboratorProgressApi';
 import { authenticateCapitalHumano, clearCapitalHumanoAuth, isCapitalHumanoAuthenticated, isUsingDefaultCapitalHumanoCode } from '@/lib/capitalHumanoAuth';
 import { Progress } from '@/components/ui/progress';
 
@@ -54,6 +54,8 @@ export default function CapitalHumano() {
   const [accessCode, setAccessCode] = useState('');
   const [authError, setAuthError] = useState<string | null>(null);
   const [isAuthorized, setIsAuthorized] = useState(() => isCapitalHumanoAuthenticated());
+  const [sendingReminderByEmail, setSendingReminderByEmail] = useState<Record<string, boolean>>({});
+  const [reminderFeedbackByEmail, setReminderFeedbackByEmail] = useState<Record<string, string>>({});
 
   useEffect(() => {
     if (!isAuthorized) {
@@ -108,6 +110,33 @@ export default function CapitalHumano() {
     clearCapitalHumanoAuth();
     setIsAuthorized(false);
     setCollaborators([]);
+  };
+
+  const handleSendReminder = async (collaborator: CollaboratorProgress) => {
+    const email = collaborator.collaboratorEmail;
+    const pendingCoursesCount = getPendingResourcesCount(collaborator);
+    if (pendingCoursesCount <= 0) return;
+
+    setReminderFeedbackByEmail((prev) => ({ ...prev, [email]: '' }));
+    setSendingReminderByEmail((prev) => ({ ...prev, [email]: true }));
+
+    try {
+      await sendProgressReminder({
+        collaboratorEmail: email,
+        collaboratorName: collaborator.collaboratorName,
+        pendingCoursesCount,
+        completedResourcesCount: collaborator.completedResourcesCount,
+        totalResourcesCount: collaborator.totalResourcesCount,
+      });
+      setReminderFeedbackByEmail((prev) => ({ ...prev, [email]: 'Recordatorio enviado correctamente.' }));
+    } catch {
+      setReminderFeedbackByEmail((prev) => ({
+        ...prev,
+        [email]: 'No fue posible enviar automaticamente. Puedes usar el envio manual.',
+      }));
+    } finally {
+      setSendingReminderByEmail((prev) => ({ ...prev, [email]: false }));
+    }
   };
 
   if (!isAuthorized) {
@@ -245,6 +274,8 @@ export default function CapitalHumano() {
               {collaborators.map((collaborator) => {
                 const meta = statusMeta[getDisplayStatus(collaborator)];
                 const pendingResources = getPendingResourcesCount(collaborator);
+                const isSendingReminder = Boolean(sendingReminderByEmail[collaborator.collaboratorEmail]);
+                const reminderFeedback = reminderFeedbackByEmail[collaborator.collaboratorEmail];
                 return (
                   <div key={collaborator.collaboratorEmail} className="rounded-2xl border border-white/8 bg-white/5 p-5 space-y-4">
                     <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-3">
@@ -263,16 +294,30 @@ export default function CapitalHumano() {
 
                     {pendingResources > 0 ? (
                       <div className="rounded-xl border border-amber-300/20 bg-amber-400/10 p-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                        <p className="text-sm text-amber-100">
-                          Faltan {pendingResources} curso(s) por completar. Puedes enviar recordatorio al correo registrado.
-                        </p>
-                        <a
-                          href={buildReminderMailto(collaborator)}
-                          className="inline-flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold text-foreground border border-white/15 bg-white/10 hover:border-primary/40 transition-colors"
-                        >
-                          <Mail className="w-4 h-4" />
-                          <span>Enviar recordatorio</span>
-                        </a>
+                        <div className="space-y-2">
+                          <p className="text-sm text-amber-100">
+                            Faltan {pendingResources} curso(s) por completar. Puedes enviar recordatorio al correo registrado.
+                          </p>
+                          {reminderFeedback ? (
+                            <p className="text-xs text-foreground/80">{reminderFeedback}</p>
+                          ) : null}
+                        </div>
+                        <div className="flex flex-col sm:items-end gap-2">
+                          <button
+                            onClick={() => void handleSendReminder(collaborator)}
+                            disabled={isSendingReminder}
+                            className="inline-flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold text-foreground border border-white/15 bg-white/10 hover:border-primary/40 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                          >
+                            <Mail className="w-4 h-4" />
+                            <span>{isSendingReminder ? 'Enviando...' : 'Enviar recordatorio'}</span>
+                          </button>
+                          <a
+                            href={buildReminderMailto(collaborator)}
+                            className="text-xs text-foreground/70 hover:text-foreground underline"
+                          >
+                            Envio manual
+                          </a>
+                        </div>
                       </div>
                     ) : null}
 
