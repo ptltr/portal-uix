@@ -27,26 +27,6 @@ const getDisplayStatus = (collaborator: CollaboratorProgress): CollaboratorProgr
   return 'at-risk';
 };
 
-const buildReminderMailto = (collaborator: CollaboratorProgress): string => {
-  const pendingCount = getPendingResourcesCount(collaborator);
-  const completed = collaborator.completedResourcesCount;
-  const total = collaborator.totalResourcesCount;
-  const collaboratorLabel = collaborator.collaboratorName || collaborator.collaboratorEmail;
-
-  const subject = encodeURIComponent('Recordatorio de seguimiento - Plan de desarrollo UIX');
-  const body = encodeURIComponent(
-    `Hola ${collaboratorLabel},\n\n` +
-    `Te compartimos un recordatorio de seguimiento de tu plan de desarrollo en Asistente UiX.\n\n` +
-    `Avance actual: ${completed}/${total} recursos completados.\n` +
-    `Pendientes: ${pendingCount} recurso(s).\n\n` +
-    `Te invitamos a continuar con los cursos pendientes y registrar tu avance.\n\n` +
-    `Gracias,\n` +
-    `Capital Humano`
-  );
-
-  return `mailto:${collaborator.collaboratorEmail}?subject=${subject}&body=${body}`;
-};
-
 export default function CapitalHumano() {
   const [collaborators, setCollaborators] = useState<CollaboratorProgress[]>([]);
   const [loading, setLoading] = useState(true);
@@ -371,14 +351,6 @@ export default function CapitalHumano() {
                                   : 'Configurar envío automático'}
                             </span>
                           </button>
-                          {autoReminderEnabled ? (
-                            <a
-                              href={buildReminderMailto(collaborator)}
-                              className="text-xs text-foreground/70 hover:text-foreground underline"
-                            >
-                              Envío manual
-                            </a>
-                          ) : null}
                         </div>
                       </div>
                     ) : null}
