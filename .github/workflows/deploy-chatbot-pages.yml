@@ -48,8 +48,20 @@ jobs:
           VITE_REMINDER_API_BASE_URL: ${{ secrets.VITE_REMINDER_API_BASE_URL }}
         run: pnpm --filter @workspace/chatbot-colaboradores exec vite build --config vite.config.ts
 
+      - name: Resolve build output path
+        id: dist
+        run: |
+          if [ -f chatbot-colaboradores/dist/index.html ]; then
+            echo "dist_path=chatbot-colaboradores/dist" >> "$GITHUB_OUTPUT"
+          elif [ -f dist/index.html ]; then
+            echo "dist_path=dist" >> "$GITHUB_OUTPUT"
+          else
+            echo "No dist/index.html found" >&2
+            exit 1
+          fi
+
       - name: Add SPA fallback
-        run: cp chatbot-colaboradores/dist/index.html chatbot-colaboradores/dist/404.html
+        run: cp "${{ steps.dist.outputs.dist_path }}/index.html" "${{ steps.dist.outputs.dist_path }}/404.html"
 
       - name: Setup Pages
         uses: actions/configure-pages@v5
@@ -57,7 +69,7 @@ jobs:
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: chatbot-colaboradores/dist
+          path: ${{ steps.dist.outputs.dist_path }}
 
       - name: Deploy to GitHub Pages
         id: deployment
