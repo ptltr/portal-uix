@@ -39,6 +39,12 @@ jobs:
           node-version: 20
           cache: pnpm
 
+      - name: Ensure workspace includes app packages
+        run: |
+          if ! grep -q "chatbot-colaboradores" pnpm-workspace.yaml; then
+            sed -i '/^[[:space:]]*- scripts$/a\  - api-server\n  - chatbot-colaboradores\n  - mockup-sandbox' pnpm-workspace.yaml
+          fi
+
       - name: Install dependencies
         run: pnpm -r install --no-frozen-lockfile
 
