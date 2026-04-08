@@ -45,6 +45,10 @@ jobs:
       - name: Install chatbot dependencies
         run: pnpm install --filter @workspace/chatbot-colaboradores... --no-frozen-lockfile
 
+      - name: Ensure chatbot node_modules exists
+        working-directory: chatbot-colaboradores
+        run: pnpm install --no-frozen-lockfile
+
       - name: Build chatbot app for Pages
         env:
           BASE_PATH: /portal-uix/
