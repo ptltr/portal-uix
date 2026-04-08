@@ -55,19 +55,21 @@ export interface SendReminderPayload {
 const LOCAL_PROGRESS_KEY = "uix-collaborator-progress-v1";
 const REMINDER_API_BASE_URL_KEY = "uix-reminder-api-base-url";
 
+const shouldIgnoreLocalApiOnPublicHost = (url: string): boolean => {
+  if (typeof window === "undefined") return false;
+
+  const isLocalApi = /127\.0\.0\.1|localhost/.test(url);
+  const isLocalHost = /127\.0\.0\.1|localhost/.test(window.location.hostname);
+  return isLocalApi && !isLocalHost;
+};
+
 const getApiBaseUrl = (): string => {
   const fromEnv = (import.meta as ImportMeta & { env?: Record<string, string> }).env?.VITE_API_BASE_URL;
   if (!fromEnv) return "";
 
   const normalized = fromEnv.replace(/\/$/, "");
 
-  if (typeof window !== "undefined") {
-    const isLocalApi = /127\.0\.0\.1|localhost/.test(normalized);
-    const isLocalHost = /127\.0\.0\.1|localhost/.test(window.location.hostname);
-    if (isLocalApi && !isLocalHost) {
-      return "";
-    }
-  }
+  if (shouldIgnoreLocalApiOnPublicHost(normalized)) return "";
 
   return normalized;
 };
@@ -75,13 +77,17 @@ const getApiBaseUrl = (): string => {
 const getReminderApiBaseUrl = (): string => {
   const fromEnv = (import.meta as ImportMeta & { env?: Record<string, string> }).env?.VITE_REMINDER_API_BASE_URL;
   if (fromEnv) {
-    return fromEnv.replace(/\/$/, "");
+    const normalized = fromEnv.replace(/\/$/, "");
+    if (shouldIgnoreLocalApiOnPublicHost(normalized)) return "";
+    return normalized;
   }
 
   try {
     const fromStorage = localStorage.getItem(REMINDER_API_BASE_URL_KEY) || "";
     if (fromStorage) {
-      return fromStorage.replace(/\/$/, "");
+      const normalized = fromStorage.replace(/\/$/, "");
+      if (shouldIgnoreLocalApiOnPublicHost(normalized)) return "";
+      return normalized;
     }
   } catch {
     // Ignore localStorage access errors in restricted environments.
@@ -296,11 +302,19 @@ export const sendProgressReminder = async (payload: SendReminderPayload): Promis
     throw new Error("Automatic reminder requires VITE_API_BASE_URL configuration.");
   }
 
-  const response = await fetch(`${baseUrl}/api/collaborators/progress/reminders`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-  });
+  let response: Response;
+  try {
+    response = await fetch(`${baseUrl}/api/collaborators/progress/reminders`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+  } catch {
+    throw new Error(
+      `No fue posible conectar con el backend de recordatorios (${baseUrl}). ` +
+      "Actualiza la URL en Configuracion de recordatorios automáticos.",
+    );
+  }
 
   if (!response.ok) {
     let details = "";
