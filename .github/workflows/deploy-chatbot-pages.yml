@@ -47,7 +47,7 @@ jobs:
           BASE_PATH: /portal-uix/
           VITE_API_BASE_URL: https://script.google.com/macros/s/AKfycbzBdx5IHMaqNjYcN5O6z9k1oH9sbOffc0Ik353LF613zmZ0bROUDQSJQUTp2JvZ6RHJoQ/exec
           VITE_REMINDER_API_BASE_URL: https://script.google.com/macros/s/AKfycbzBdx5IHMaqNjYcN5O6z9k1oH9sbOffc0Ik353LF613zmZ0bROUDQSJQUTp2JvZ6RHJoQ/exec
-        run: pnpm --filter @workspace/chatbot-colaboradores run build
+        run: pnpm --dir chatbot-colaboradores run build
 
       - name: Resolve build output path
         id: dist
