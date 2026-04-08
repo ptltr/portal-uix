@@ -1,6 +1,36 @@
 import type { PersistedChatState } from "@/hooks/use-chat";
 import { getReminderBackendBaseUrl } from "@/lib/collaboratorProgressApi";
 
+const isAppsScriptEndpoint = (url: string): boolean => {
+  return /script\.google\.com\/macros\/s\/.+\/exec/.test(url);
+};
+
+const buildAppsScriptUrl = (baseUrl: string, action: string, params?: Record<string, string>): string => {
+  const url = new URL(baseUrl);
+  url.searchParams.set("action", action);
+
+  if (params) {
+    for (const [key, value] of Object.entries(params)) {
+      url.searchParams.set(key, value);
+    }
+  }
+
+  return url.toString();
+};
+
+const callAppsScriptPost = async <T>(baseUrl: string, action: string, payload: unknown): Promise<T> => {
+  const body = new URLSearchParams();
+  body.set("action", action);
+  body.set("payload", JSON.stringify(payload));
+
+  const response = await fetch(baseUrl, { method: "POST", body });
+  if (!response.ok) {
+    throw new Error(`Apps Script request failed: ${response.status}`);
+  }
+
+  return (await response.json()) as T;
+};
+
 const getApiBaseUrl = (): string => {
   const fromEnv = (import.meta as ImportMeta & { env?: Record<string, string> }).env?.VITE_API_BASE_URL;
   if (fromEnv) {
@@ -47,6 +77,47 @@ const sessionHasMeaningfulContent = (snapshot: PersistedChatState): boolean => {
   return snapshot.messages.length > 0 || Boolean(snapshot.finalReport);
 };
 
+const parseSessionSnapshot = (value: unknown): PersistedChatState | null => {
+  if (!value || typeof value !== "object") return null;
+  const snapshot = value as PersistedChatState;
+  if (!Array.isArray(snapshot.messages)) return null;
+  return snapshot;
+};
+
+const fetchSessionSnapshotFromAppsScript = async (baseUrl: string, email: string): Promise<PersistedChatState | null> => {
+  try {
+    const response = await fetch(buildAppsScriptUrl(baseUrl, "getChatSession", { email }));
+    if (response.status === 404 || !response.ok) return null;
+    const parsed = parseSessionSnapshot(await response.json());
+    return parsed && sessionHasMeaningfulContent(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+};
+
+const fetchSessionSnapshotFromRest = async (baseUrl: string, email: string): Promise<PersistedChatState | null> => {
+  try {
+    const response = await fetch(`${baseUrl}/api/chat-sessions/${encodeURIComponent(email)}`);
+    if (response.status === 404 || !response.ok) return null;
+    const parsed = parseSessionSnapshot(await response.json());
+    return parsed && sessionHasMeaningfulContent(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+};
+
+const fetchSessionSnapshot = async (baseUrl: string, email: string): Promise<PersistedChatState | null> => {
+  if (isAppsScriptEndpoint(baseUrl)) {
+    const fromAppsScript = await fetchSessionSnapshotFromAppsScript(baseUrl, email);
+    if (fromAppsScript) return fromAppsScript;
+    return fetchSessionSnapshotFromRest(baseUrl, email);
+  }
+
+  const fromRest = await fetchSessionSnapshotFromRest(baseUrl, email);
+  if (fromRest) return fromRest;
+  return fetchSessionSnapshotFromAppsScript(baseUrl, email);
+};
+
 export const hasSessionByEmail = async (email: string): Promise<boolean> => {
   const normalized = normalizeEmail(email);
   const baseUrl = getApiBaseUrl();
@@ -55,15 +126,8 @@ export const hasSessionByEmail = async (email: string): Promise<boolean> => {
     return false;
   }
 
-  try {
-    const response = await fetch(`${baseUrl}/api/chat-sessions/${encodeURIComponent(normalized)}`);
-    if (!response.ok) return false;
-
-    const snapshot = (await response.json()) as PersistedChatState;
-    return sessionHasMeaningfulContent(snapshot);
-  } catch {
-    return false;
-  }
+  const snapshot = await fetchSessionSnapshot(baseUrl, normalized);
+  return Boolean(snapshot);
 };
 
 export const fetchSessionByEmail = async (email: string): Promise<PersistedChatState | null> => {
@@ -74,22 +138,7 @@ export const fetchSessionByEmail = async (email: string): Promise<PersistedChatS
     return null;
   }
 
-  try {
-    const response = await fetch(`${baseUrl}/api/chat-sessions/${encodeURIComponent(normalized)}`);
-
-    if (response.status === 404) {
-      return null;
-    }
-
-    if (!response.ok) {
-      return null;
-    }
-
-    const snapshot = (await response.json()) as PersistedChatState;
-    return sessionHasMeaningfulContent(snapshot) ? snapshot : null;
-  } catch {
-    return null;
-  }
+  return fetchSessionSnapshot(baseUrl, normalized);
 };
 
 export const saveSessionByEmail = async (email: string, snapshot: PersistedChatState): Promise<void> => {
@@ -100,14 +149,41 @@ export const saveSessionByEmail = async (email: string, snapshot: PersistedChatS
     return;
   }
 
-  await fetch(`${baseUrl}/api/chat-sessions/${encodeURIComponent(normalized)}`, {
-    method: "PUT",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      ...snapshot,
-      employeeEmail: normalized,
-    }),
-  });
+  const payload = {
+    ...snapshot,
+    employeeEmail: normalized,
+  };
+
+  const saveWithRest = async (): Promise<void> => {
+    await fetch(`${baseUrl}/api/chat-sessions/${encodeURIComponent(normalized)}`, {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload),
+    });
+  };
+
+  const saveWithAppsScript = async (): Promise<void> => {
+    await callAppsScriptPost(baseUrl, "upsertChatSession", {
+      email: normalized,
+      snapshot: payload,
+    });
+  };
+
+  if (isAppsScriptEndpoint(baseUrl)) {
+    try {
+      await saveWithAppsScript();
+      return;
+    } catch {
+      await saveWithRest();
+      return;
+    }
+  }
+
+  try {
+    await saveWithRest();
+  } catch {
+    await saveWithAppsScript();
+  }
 };

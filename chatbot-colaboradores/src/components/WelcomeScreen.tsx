@@ -118,7 +118,7 @@ export function WelcomeScreen({
     && resumeFromReminderLink
     && Boolean(normalizeEmail(initialUserEmail))
     && normalizeEmail(initialUserEmail) === normalizeEmail(userEmail);
-  const hasAnyResumeCandidate = hasSavedSessionForEmail || hasRemoteSessionForEmail;
+  const hasAnyResumeCandidate = hasSavedSessionForEmail || hasRemoteSessionForEmail || hasReminderResumeCandidate;
   const showResumeOptionsInProfile = isValidEmail(userEmail);
 
   useEffect(() => {
@@ -186,8 +186,8 @@ export function WelcomeScreen({
   const handleStartFresh = (nextStep: 'intro' | 'profile' = 'profile', preserveInputs = false) => {
     onStartFresh?.();
     setIgnoreReminderResume(true);
+    setSelectedProfile('');
     if (!preserveInputs) {
-      setSelectedProfile('');
       setUserName('');
       setUserEmail('');
     }
