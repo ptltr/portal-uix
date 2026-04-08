@@ -3,7 +3,19 @@ import { getReminderBackendBaseUrl } from "@/lib/collaboratorProgressApi";
 
 const getApiBaseUrl = (): string => {
   const fromEnv = (import.meta as ImportMeta & { env?: Record<string, string> }).env?.VITE_API_BASE_URL;
-  if (fromEnv) return fromEnv.replace(/\/$/, "");
+  if (fromEnv) {
+    const normalized = fromEnv.replace(/\/$/, "");
+
+    if (typeof window !== "undefined") {
+      const isLocalApi = /127\.0\.0\.1|localhost/.test(normalized);
+      const isLocalHost = /127\.0\.0\.1|localhost/.test(window.location.hostname);
+      if (!(isLocalApi && !isLocalHost)) {
+        return normalized;
+      }
+    } else {
+      return normalized;
+    }
+  }
 
   const fromSharedSetting = getReminderBackendBaseUrl();
   if (fromSharedSetting) return fromSharedSetting.replace(/\/$/, "");

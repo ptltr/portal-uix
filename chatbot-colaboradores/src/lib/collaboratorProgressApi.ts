@@ -53,14 +53,60 @@ export interface SendReminderPayload {
 }
 
 const LOCAL_PROGRESS_KEY = "uix-collaborator-progress-v1";
+const REMINDER_API_BASE_URL_KEY = "uix-reminder-api-base-url";
 
 const getApiBaseUrl = (): string => {
   const fromEnv = (import.meta as ImportMeta & { env?: Record<string, string> }).env?.VITE_API_BASE_URL;
-  return fromEnv ? fromEnv.replace(/\/$/, "") : "";
+  if (!fromEnv) return "";
+
+  const normalized = fromEnv.replace(/\/$/, "");
+
+  if (typeof window !== "undefined") {
+    const isLocalApi = /127\.0\.0\.1|localhost/.test(normalized);
+    const isLocalHost = /127\.0\.0\.1|localhost/.test(window.location.hostname);
+    if (isLocalApi && !isLocalHost) {
+      return "";
+    }
+  }
+
+  return normalized;
+};
+
+const getReminderApiBaseUrl = (): string => {
+  const fromEnv = (import.meta as ImportMeta & { env?: Record<string, string> }).env?.VITE_REMINDER_API_BASE_URL;
+  if (fromEnv) {
+    return fromEnv.replace(/\/$/, "");
+  }
+
+  try {
+    const fromStorage = localStorage.getItem(REMINDER_API_BASE_URL_KEY) || "";
+    if (fromStorage) {
+      return fromStorage.replace(/\/$/, "");
+    }
+  } catch {
+    // Ignore localStorage access errors in restricted environments.
+  }
+
+  return "";
 };
 
 export const isReminderBackendConfigured = (): boolean => {
-  return Boolean(getApiBaseUrl());
+  return Boolean(getReminderApiBaseUrl() || getApiBaseUrl());
+};
+
+export const getReminderBackendBaseUrl = (): string => {
+  return getReminderApiBaseUrl() || getApiBaseUrl();
+};
+
+export const setReminderBackendBaseUrl = (value: string): void => {
+  const normalized = value.trim().replace(/\/$/, "");
+  if (!normalized) return;
+
+  try {
+    localStorage.setItem(REMINDER_API_BASE_URL_KEY, normalized);
+  } catch {
+    // Ignore localStorage access errors in restricted environments.
+  }
 };
 
 const getLocalProgressMap = (): Record<string, CollaboratorProgress> => {
@@ -244,7 +290,7 @@ export const listCollaboratorsProgress = async (): Promise<CollaboratorProgress[
 };
 
 export const sendProgressReminder = async (payload: SendReminderPayload): Promise<{ sent: boolean; id?: string }> => {
-  const baseUrl = getApiBaseUrl();
+  const baseUrl = getReminderApiBaseUrl() || getApiBaseUrl();
 
   if (!baseUrl) {
     throw new Error("Automatic reminder requires VITE_API_BASE_URL configuration.");
@@ -257,7 +303,14 @@ export const sendProgressReminder = async (payload: SendReminderPayload): Promis
   });
 
   if (!response.ok) {
-    throw new Error(`Failed to send reminder email: ${response.status}`);
+    let details = "";
+    try {
+      const errorBody = (await response.json()) as { message?: string };
+      details = errorBody?.message ? ` - ${errorBody.message}` : "";
+    } catch {
+      // Ignore JSON parse failures and fall back to status code message.
+    }
+    throw new Error(`Failed to send reminder email: ${response.status}${details}`);
   }
 
   return (await response.json()) as { sent: boolean; id?: string };
