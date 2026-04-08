@@ -87,7 +87,12 @@ const callAppsScriptPost = async <T>(baseUrl: string, action: string, payload: u
     throw new Error(`Apps Script request failed: ${response.status}`);
   }
 
-  return (await response.json()) as T;
+  const data = (await response.json()) as { ok?: boolean; message?: string } & T;
+  if (data && typeof data === "object" && data.ok === false) {
+    throw new Error(data.message || "Apps Script returned an error.");
+  }
+
+  return data as T;
 };
 
 const callAppsScriptGet = async <T>(baseUrl: string, action: string, params?: Record<string, string>): Promise<T> => {
@@ -97,7 +102,12 @@ const callAppsScriptGet = async <T>(baseUrl: string, action: string, params?: Re
     throw new Error(`Apps Script request failed: ${response.status}`);
   }
 
-  return (await response.json()) as T;
+  const data = (await response.json()) as { ok?: boolean; message?: string } & T;
+  if (data && typeof data === "object" && data.ok === false) {
+    throw new Error(data.message || "Apps Script returned an error.");
+  }
+
+  return data as T;
 };
 
 const shouldIgnoreLocalApiOnPublicHost = (url: string): boolean => {
@@ -508,7 +518,11 @@ export const sendProgressReminder = async (payload: SendReminderPayload): Promis
   }
 
   if (isAppsScriptEndpoint(baseUrl)) {
-    return callAppsScriptPost<{ sent: boolean; id?: string }>(baseUrl, "sendProgressReminder", payload);
+    const result = await callAppsScriptPost<{ sent: boolean; id?: string; message?: string }>(baseUrl, "sendProgressReminder", payload);
+    if (!result.sent) {
+      throw new Error(result.message || "Apps Script did not confirm reminder delivery.");
+    }
+    return result;
   }
 
   let response: Response;
