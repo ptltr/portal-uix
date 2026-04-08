@@ -157,7 +157,8 @@ const sendReminderViaWebhookPayload = async (
   const response = await fetch(baseUrl, {
     method: "POST",
     headers: {
-      "Content-Type": "application/json",
+      // Apps Script webhook rejects preflight OPTIONS; use a simple CORS request.
+      "Content-Type": "text/plain;charset=UTF-8",
     },
     body: JSON.stringify({
       collaboratorEmail,
