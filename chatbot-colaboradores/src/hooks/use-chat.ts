@@ -47,6 +47,10 @@ export interface PersistedChatState {
   updatedAt: number;
 }
 
+type PartialPersistedChatState = Partial<PersistedChatState> & {
+  report?: string;
+};
+
 const CHAT_STORAGE_KEY = "uix-chat-session-v1";
 
 const migrateLegacyReportContent = (report: string): string => {
@@ -648,9 +652,12 @@ export function useChat() {
   const hasSnapshotContent = useCallback((snapshot: PersistedChatState | null | undefined): boolean => {
     if (!snapshot) return false;
 
+    const parsedMessages = Array.isArray(snapshot.messages) ? snapshot.messages : [];
+    const normalizedReport = snapshot.finalReport || "";
+
     return (
-      snapshot.messages.length > 0
-      || Boolean(snapshot.finalReport)
+      parsedMessages.length > 0
+      || Boolean(normalizedReport)
     );
   }, []);
 
@@ -659,12 +666,29 @@ export function useChat() {
       const raw = localStorage.getItem(CHAT_STORAGE_KEY);
       if (!raw) return null;
 
-      const parsed = JSON.parse(raw) as PersistedChatState;
-      if ((parsed.employeeEmail || "").trim().toLowerCase() !== email.trim().toLowerCase()) {
+      const parsed = JSON.parse(raw) as PartialPersistedChatState;
+      const storedEmail = String(parsed.employeeEmail || "").trim().toLowerCase();
+      if (storedEmail !== email.trim().toLowerCase()) {
         return null;
       }
 
-      return parsed;
+      const normalized: PersistedChatState = {
+        conversationId: typeof parsed.conversationId === "number" ? parsed.conversationId : null,
+        messages: Array.isArray(parsed.messages) ? parsed.messages : [],
+        isEvaluationComplete: Boolean(parsed.isEvaluationComplete),
+        employeeName: String(parsed.employeeName || ""),
+        employeeEmail: storedEmail,
+        currentStep: typeof parsed.currentStep === "number" ? parsed.currentStep : 0,
+        finalReport: String(parsed.finalReport || parsed.report || ""),
+        followUpCount: typeof parsed.followUpCount === "number" ? parsed.followUpCount : 0,
+        isInFollowUp: Boolean(parsed.isInFollowUp),
+        signals: parsed.signals?.strengths && parsed.signals?.opportunities
+          ? parsed.signals
+          : { strengths: {}, opportunities: {} },
+        updatedAt: typeof parsed.updatedAt === "number" ? parsed.updatedAt : Date.now(),
+      };
+
+      return normalized;
     } catch {
       return null;
     }

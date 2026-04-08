@@ -371,7 +371,7 @@ export function WelcomeScreen({
                       Retomar conversación
                     </button>
                     <button
-                      onClick={() => handleStartFresh('profile', true)}
+                      onClick={() => handleStartFresh('profile', false)}
                       className="w-full rounded-xl py-2.5 text-sm font-semibold text-white btn-brand"
                     >
                       Empezar nueva
