@@ -46,8 +46,7 @@ jobs:
         env:
           BASE_PATH: /portal-uix/
           VITE_REMINDER_API_BASE_URL: ${{ secrets.VITE_REMINDER_API_BASE_URL }}
-        working-directory: chatbot-colaboradores
-        run: pnpm build
+        run: pnpm --filter @workspace/chatbot-colaboradores exec vite build --config vite.config.ts
 
       - name: Add SPA fallback
         run: cp chatbot-colaboradores/dist/index.html chatbot-colaboradores/dist/404.html
