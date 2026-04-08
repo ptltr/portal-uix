@@ -118,7 +118,7 @@ export function WelcomeScreen({
     && resumeFromReminderLink
     && Boolean(normalizeEmail(initialUserEmail))
     && normalizeEmail(initialUserEmail) === normalizeEmail(userEmail);
-  const hasAnyResumeCandidate = hasSavedSessionForEmail || hasRemoteSessionForEmail;
+  const hasAnyResumeCandidate = hasSavedSessionForEmail || hasRemoteSessionForEmail || hasSavedSession;
   const showResumeOptionsInProfile = isValidEmail(userEmail);
 
   useEffect(() => {
@@ -347,7 +347,9 @@ export function WelcomeScreen({
                         ? 'Detectamos una conversación guardada para este correo.'
                         : hasRemoteSessionForEmail
                           ? 'Detectamos una conversación guardada para este correo en el servidor.'
-                          : 'Detectamos una conversación guardada para este correo.'
+                          : hasSavedSession
+                            ? 'Detectamos una conversación guardada en este navegador.'
+                            : 'Detectamos una conversación guardada para este correo.'
                       : hasReminderResumeCandidate
                         ? 'Llegaste desde un recordatorio. Ingresa el mismo correo para buscar tu historial guardado.'
                         : 'Puedes retomar si ya existe historial para este correo.'}
@@ -362,6 +364,8 @@ export function WelcomeScreen({
                           profile: selectedProfile || 'UX/UI Designer',
                           source: hasRemoteSessionForEmail
                               ? 'remote'
+                              : hasSavedSession && !hasSavedSessionForEmail
+                                ? 'reminder'
                               : 'local',
                         });
                       }}
