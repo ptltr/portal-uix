@@ -43,14 +43,14 @@ jobs:
         run: pnpm install --no-frozen-lockfile
 
       - name: Install chatbot dependencies
-        working-directory: chatbot-colaboradores
-        run: pnpm install --no-frozen-lockfile
+        run: pnpm install --filter @workspace/chatbot-colaboradores... --no-frozen-lockfile
 
       - name: Build chatbot app for Pages
         env:
           BASE_PATH: /portal-uix/
           VITE_REMINDER_API_BASE_URL: ${{ secrets.VITE_REMINDER_API_BASE_URL }}
-        run: ./node_modules/.bin/vite build --config chatbot-colaboradores/vite.config.ts
+        working-directory: chatbot-colaboradores
+        run: pnpm build
 
       - name: Resolve build output path
         id: dist
