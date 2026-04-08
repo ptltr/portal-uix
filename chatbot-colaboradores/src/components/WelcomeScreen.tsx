@@ -118,7 +118,7 @@ export function WelcomeScreen({
     && resumeFromReminderLink
     && Boolean(normalizeEmail(initialUserEmail))
     && normalizeEmail(initialUserEmail) === normalizeEmail(userEmail);
-  const hasAnyResumeCandidate = hasSavedSessionForEmail || hasRemoteSessionForEmail || hasReminderResumeCandidate;
+  const hasAnyResumeCandidate = hasSavedSessionForEmail || hasRemoteSessionForEmail;
   const showResumeOptionsInProfile = isValidEmail(userEmail);
 
   useEffect(() => {
@@ -347,8 +347,10 @@ export function WelcomeScreen({
                         ? 'Detectamos una conversación guardada para este correo.'
                         : hasRemoteSessionForEmail
                           ? 'Detectamos una conversación guardada para este correo en el servidor.'
-                          : 'Detectamos una conversación guardada para este correo en el enlace de recordatorio.'
-                      : 'Puedes retomar si ya existe historial para este correo.'}
+                          : 'Detectamos una conversación guardada para este correo.'
+                      : hasReminderResumeCandidate
+                        ? 'Llegaste desde un recordatorio. Ingresa el mismo correo para buscar tu historial guardado.'
+                        : 'Puedes retomar si ya existe historial para este correo.'}
                   </p>
                   <div className="grid gap-2 sm:grid-cols-2">
                     <button
@@ -358,9 +360,7 @@ export function WelcomeScreen({
                           userName: userName.trim(),
                           userEmail: userEmail.trim(),
                           profile: selectedProfile || 'UX/UI Designer',
-                          source: hasReminderResumeCandidate && !hasSavedSessionForEmail && !hasSavedSession
-                            ? 'reminder'
-                            : hasRemoteSessionForEmail
+                          source: hasRemoteSessionForEmail
                               ? 'remote'
                               : 'local',
                         });

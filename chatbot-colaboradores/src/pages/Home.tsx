@@ -167,6 +167,14 @@ export default function Home() {
   };
 
   const handleRestart = () => {
+    if (typeof window !== 'undefined') {
+      const url = new URL(window.location.href);
+      url.searchParams.delete('resume');
+      url.searchParams.delete('email');
+      url.searchParams.delete('name');
+      window.history.replaceState({}, '', `${url.pathname}${url.search}${url.hash}`);
+    }
+
     resetChat();
     setSelectedProfile('');
     setSelectedLevel('');
