@@ -371,7 +371,12 @@ export function WelcomeScreen({
                       Retomar conversación
                     </button>
                     <button
-                      onClick={() => handleStartFresh('profile', false)}
+                      onClick={() => {
+                        handleStartFresh('profile', false);
+                        if (resumeFromReminderLink && typeof window !== 'undefined') {
+                          window.location.assign(import.meta.env.BASE_URL || '/');
+                        }
+                      }}
                       className="w-full rounded-xl py-2.5 text-sm font-semibold text-white btn-brand"
                     >
                       Empezar nueva

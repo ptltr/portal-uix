@@ -150,6 +150,11 @@ export default function Home() {
       }
 
       if (!restored) {
+        const hasExistingContent = messages.length > 0 || Boolean(finalReport);
+        if (payload.source === 'reminder' && hasExistingContent) {
+          setPhase('chat');
+          return true;
+        }
         return false;
       }
 
