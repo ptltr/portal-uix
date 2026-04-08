@@ -42,6 +42,9 @@ jobs:
       - name: Install dependencies
         run: pnpm -r install --no-frozen-lockfile
 
+      - name: Re-link chatbot dependencies
+        run: pnpm --dir chatbot-colaboradores install --force --no-frozen-lockfile
+
       - name: Build chatbot app for Pages
         env:
           BASE_PATH: /portal-uix/
