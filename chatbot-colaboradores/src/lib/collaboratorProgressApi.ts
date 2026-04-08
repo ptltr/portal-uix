@@ -110,6 +110,83 @@ const callAppsScriptGet = async <T>(baseUrl: string, action: string, params?: Re
   return data as T;
 };
 
+const buildReminderResumeUrl = (email: string, name: string): string => {
+  if (typeof window === "undefined") {
+    return "https://ptltr.github.io/portal-uix/";
+  }
+
+  const url = new URL(import.meta.env.BASE_URL || "/", window.location.origin);
+  url.searchParams.set("resume", "1");
+  url.searchParams.set("email", email);
+  url.searchParams.set("name", name);
+  return url.toString();
+};
+
+const sendReminderViaWebhookPayload = async (
+  baseUrl: string,
+  payload: SendReminderPayload,
+): Promise<{ sent: boolean; id?: string }> => {
+  const collaboratorEmail = normalizeEmail(payload.collaboratorEmail);
+  const collaboratorName = (payload.collaboratorName || collaboratorEmail).trim() || collaboratorEmail;
+  const pendingCoursesCount = Math.max(Number(payload.pendingCoursesCount || 0), 0);
+  const completedResourcesCount = Math.max(Number(payload.completedResourcesCount || 0), 0);
+  const totalResourcesCount = Math.max(Number(payload.totalResourcesCount || 0), 1);
+  const resumeUrl = buildReminderResumeUrl(collaboratorEmail, collaboratorName);
+
+  const subject = "Recordatorio de seguimiento - Cursos pendientes";
+  const text = [
+    `Hola ${collaboratorName},`,
+    "",
+    `Te compartimos un recordatorio: aun tienes ${pendingCoursesCount} curso(s) pendiente(s) por completar.`,
+    `Tu avance actual es ${completedResourcesCount}/${totalResourcesCount}.`,
+    "",
+    `Continua aqui: ${resumeUrl}`,
+    "",
+    "Gracias,",
+    "Capital Humano",
+  ].join("\n");
+
+  const html = [
+    `<p>Hola ${collaboratorName},</p>`,
+    `<p>Te compartimos un recordatorio: aun tienes <strong>${pendingCoursesCount} curso(s)</strong> pendiente(s) por completar.</p>`,
+    `<p>Tu avance actual es <strong>${completedResourcesCount}/${totalResourcesCount}</strong>.</p>`,
+    `<p><a href=\"${resumeUrl}\">Continuar en Asistente UiX</a></p>`,
+    "<p>Gracias,<br/>Capital Humano</p>",
+  ].join("");
+
+  const response = await fetch(baseUrl, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      collaboratorEmail,
+      collaboratorName,
+      pendingCoursesCount,
+      completedResourcesCount,
+      totalResourcesCount,
+      subject,
+      text,
+      html,
+    }),
+  });
+
+  if (!response.ok) {
+    const details = await response.text();
+    throw new Error(details || `Webhook request failed: ${response.status}`);
+  }
+
+  const result = (await response.json()) as { ok?: boolean; id?: string; message?: string; sent?: boolean };
+  if (result.ok === false) {
+    throw new Error(result.message || "Webhook reminder was rejected.");
+  }
+
+  return {
+    sent: result.sent ?? result.ok ?? true,
+    id: result.id,
+  };
+};
+
 const shouldIgnoreLocalApiOnPublicHost = (url: string): boolean => {
   if (typeof window === "undefined") return false;
 
@@ -518,11 +595,25 @@ export const sendProgressReminder = async (payload: SendReminderPayload): Promis
   }
 
   if (isAppsScriptEndpoint(baseUrl)) {
-    const result = await callAppsScriptPost<{ sent: boolean; id?: string; message?: string }>(baseUrl, "sendProgressReminder", payload);
-    if (!result.sent) {
-      throw new Error(result.message || "Apps Script did not confirm reminder delivery.");
+    try {
+      const result = await callAppsScriptPost<{ sent: boolean; id?: string; message?: string }>(baseUrl, "sendProgressReminder", payload);
+      if (!result.sent) {
+        throw new Error(result.message || "Apps Script did not confirm reminder delivery.");
+      }
+      return result;
+    } catch (error) {
+      const message = error instanceof Error ? error.message.toLowerCase() : "";
+      const shouldTryWebhookPayload = message.includes("unauthorized") || message.includes("invalid_json") || message.includes("missing action");
+      if (!shouldTryWebhookPayload) {
+        throw error;
+      }
+
+      const result = await sendReminderViaWebhookPayload(baseUrl, payload);
+      if (!result.sent) {
+        throw new Error("Webhook reminder did not confirm delivery.");
+      }
+      return result;
     }
-    return result;
   }
 
   let response: Response;
