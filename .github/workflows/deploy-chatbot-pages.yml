@@ -40,7 +40,7 @@ jobs:
           cache: pnpm
 
       - name: Install dependencies
-        run: pnpm install --no-frozen-lockfile
+        run: pnpm -r install --no-frozen-lockfile
 
       - name: Install chatbot dependencies
         run: pnpm install --filter @workspace/chatbot-colaboradores... --no-frozen-lockfile
