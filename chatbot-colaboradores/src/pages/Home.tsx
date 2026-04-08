@@ -107,10 +107,10 @@ export default function Home() {
   }, [phase, selectedProfile, selectedLevel]);
 
   useEffect(() => {
-    if (phase !== 'welcome' && !conversationId && messages.length === 0) {
+    if (phase !== 'welcome' && !conversationId && messages.length === 0 && !finalReport) {
       setPhase('welcome');
     }
-  }, [phase, conversationId, messages.length]);
+  }, [phase, conversationId, messages.length, finalReport]);
 
   const handleStart = (id: number, profile: string, level: string, userName: string, userEmail: string) => {
     setConversationId(id);
