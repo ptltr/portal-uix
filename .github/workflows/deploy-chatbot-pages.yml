@@ -46,7 +46,7 @@ jobs:
         env:
           BASE_PATH: /portal-uix/
           VITE_REMINDER_API_BASE_URL: ${{ secrets.VITE_REMINDER_API_BASE_URL }}
-        run: pnpm --filter @workspace/chatbot-colaboradores exec vite build --config vite.config.ts
+        run: pnpm --filter ./chatbot-colaboradores build
 
       - name: Resolve build output path
         id: dist
