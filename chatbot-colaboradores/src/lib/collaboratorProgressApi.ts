@@ -122,6 +122,15 @@ const buildReminderResumeUrl = (email: string, name: string): string => {
   return url.toString();
 };
 
+const escapeHtml = (value: string): string => {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/\"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+};
+
 const sendReminderViaWebhookPayload = async (
   baseUrl: string,
   payload: SendReminderPayload,
@@ -131,6 +140,10 @@ const sendReminderViaWebhookPayload = async (
   const pendingCoursesCount = Math.max(Number(payload.pendingCoursesCount || 0), 0);
   const completedResourcesCount = Math.max(Number(payload.completedResourcesCount || 0), 0);
   const totalResourcesCount = Math.max(Number(payload.totalResourcesCount || 0), 1);
+  const completionPercentage = Math.min(
+    100,
+    Math.max(0, Math.round((completedResourcesCount / Math.max(totalResourcesCount, 1)) * 100)),
+  );
   const resumeUrl = buildReminderResumeUrl(collaboratorEmail, collaboratorName);
 
   const subject = "Recordatorio de seguimiento - Cursos pendientes";
@@ -146,13 +159,74 @@ const sendReminderViaWebhookPayload = async (
     "Capital Humano",
   ].join("\n");
 
-  const html = [
-    `<p>Hola ${collaboratorName},</p>`,
-    `<p>Te compartimos un recordatorio: aun tienes <strong>${pendingCoursesCount} curso(s)</strong> pendiente(s) por completar.</p>`,
-    `<p>Tu avance actual es <strong>${completedResourcesCount}/${totalResourcesCount}</strong>.</p>`,
-    `<p><a href=\"${resumeUrl}\">Continuar en Asistente UiX</a></p>`,
-    "<p>Gracias,<br/>Capital Humano</p>",
-  ].join("");
+  const html = `
+    <html>
+      <head>
+        <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+        <meta name="color-scheme" content="light" />
+        <meta name="supported-color-schemes" content="light" />
+      </head>
+      <body style="margin:0;padding:0;background-color:#0d0220 !important;">
+        <div style="background-color:#0d0220 !important;padding:24px 12px;font-family:Segoe UI,Arial,sans-serif;color:#0f172a;">
+          <table role="presentation" width="100%" cellspacing="0" cellpadding="0" bgcolor="#0d0220" style="max-width:620px;margin:0 auto;border-collapse:collapse;background-color:#0d0220 !important;">
+            <tr>
+              <td style="padding:0;">
+                <div style="background-color:#7b3fd9;border-radius:16px 16px 0 0;padding:18px 24px;color:#ffffff;border-bottom:4px solid #4ade80;">
+                  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse;">
+                    <tr>
+                      <td style="vertical-align:middle;width:48px;">
+                        <table role="presentation" width="44" height="44" cellspacing="0" cellpadding="0" bgcolor="#ffffff" style="border-collapse:collapse;background-color:#ffffff;border-radius:12px;border:2px solid #2f0f66;">
+                          <tr>
+                            <td align="center" valign="middle" style="font-size:14px;font-weight:800;color:#6a38bf;letter-spacing:.01em;">
+                              Ui<span style="color:#4ade80;">X</span>
+                            </td>
+                          </tr>
+                        </table>
+                      </td>
+                      <td style="padding-left:12px;vertical-align:middle;">
+                        <p style="margin:0;font-size:12px;letter-spacing:.08em;text-transform:uppercase;opacity:.95;color:#f3edff;">Asistente UiX</p>
+                        <h1 style="margin:6px 0 0 0;font-size:22px;line-height:1.25;">Recordatorio de avance</h1>
+                      </td>
+                    </tr>
+                  </table>
+                </div>
+                <div style="background-color:#ffffff !important;border:1px solid #e9dcff;border-top:none;border-radius:0 0 16px 16px;padding:24px;color:#0f172a !important;">
+                  <p style="margin:0 0 12px 0;font-size:16px;color:#0f172a;">Hola ${escapeHtml(collaboratorName)},</p>
+                  <p style="margin:0 0 16px 0;font-size:14px;line-height:1.6;color:#334155;">
+                    Te compartimos un recordatorio de tu plan de desarrollo en UiX. Aun tienes
+                    <strong>${pendingCoursesCount} curso(s) pendiente(s)</strong> por completar.
+                  </p>
+
+                  <div style="background-color:#f9f6ff;border:1px solid #e8defa;border-radius:12px;padding:14px 16px;margin:0 0 16px 0;">
+                    <p style="margin:0 0 8px 0;font-size:13px;color:#475569;">Progreso actual</p>
+                    <p style="margin:0 0 10px 0;font-size:18px;font-weight:700;color:#0f172a;">${completedResourcesCount}/${totalResourcesCount} recursos (${completionPercentage}%)</p>
+                    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" bgcolor="#e4dff0" style="border-collapse:collapse;background-color:#e4dff0;border-radius:999px;overflow:hidden;">
+                      <tr>
+                        <td width="${completionPercentage}%" bgcolor="#7b3fd9" style="background-color:#7b3fd9;height:10px;line-height:10px;font-size:0;">&nbsp;</td>
+                        <td style="height:10px;line-height:10px;font-size:0;">&nbsp;</td>
+                      </tr>
+                    </table>
+                  </div>
+
+                  <p style="margin:0 0 18px 0;font-size:14px;line-height:1.6;color:#334155;">
+                    En caso de que tus pendientes incluyan talleres, acércate a Capital Humano para coordinarlos.
+                  </p>
+
+                  <a href="${resumeUrl}" style="display:inline-block;background:#7b3fd9;color:#ffffff;text-decoration:none;font-weight:600;padding:11px 18px;border-radius:10px;font-size:14px;border:1px solid #5f2fb2;">
+                    Continuar en Asistente UiX
+                  </a>
+
+                  <p style="margin:18px 0 0 0;font-size:12px;line-height:1.6;color:#64748b;">
+                    Este correo fue enviado por Capital Humano para dar seguimiento a tu ruta de aprendizaje.
+                  </p>
+                </div>
+              </td>
+            </tr>
+          </table>
+        </div>
+      </body>
+    </html>
+  `;
 
   const response = await fetch(baseUrl, {
     method: "POST",
