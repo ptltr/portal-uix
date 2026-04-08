@@ -1,0 +1,30 @@
+services:
+  - type: web
+    name: portal-uix-api
+    runtime: node
+    plan: starter
+    rootDir: .
+    buildCommand: pnpm install --no-frozen-lockfile && pnpm --filter @workspace/api-server build
+    startCommand: node api-server/dist/index.cjs
+    healthCheckPath: /api/healthz
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        fromDatabase:
+          name: portal-uix-db
+          property: connectionString
+      - key: AI_INTEGRATIONS_OPENAI_BASE_URL
+        sync: false
+      - key: AI_INTEGRATIONS_OPENAI_API_KEY
+        sync: false
+      - key: GOOGLE_APPS_SCRIPT_WEBHOOK_URL
+        sync: false
+      - key: GOOGLE_APPS_SCRIPT_WEBHOOK_TOKEN
+        sync: false
+      - key: REMINDER_PORTAL_URL
+        value: https://ptltr.github.io/portal-uix/
+
+databases:
+  - name: portal-uix-db
+    plan: starter
