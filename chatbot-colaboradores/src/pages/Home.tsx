@@ -15,7 +15,44 @@ interface PersistedHomeUIState {
   selectedLevel: string;
 }
 
+interface ReminderResumeHint {
+  resume: boolean;
+  email: string;
+  name: string;
+}
+
+const buildFallbackNameFromEmail = (email: string): string => {
+  const local = (email.split('@')[0] || '').trim();
+  if (!local) return 'Colaborador';
+
+  const normalized = local
+    .replace(/[._-]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  if (!normalized) return 'Colaborador';
+
+  return normalized
+    .split(' ')
+    .map((chunk) => chunk.charAt(0).toUpperCase() + chunk.slice(1))
+    .join(' ');
+};
+
+const getReminderResumeHint = (): ReminderResumeHint => {
+  if (typeof window === 'undefined') {
+    return { resume: false, email: '', name: '' };
+  }
+
+  const params = new URLSearchParams(window.location.search);
+  const resume = params.get('resume') === '1';
+  const email = (params.get('email') || '').trim();
+  const name = (params.get('name') || '').trim();
+
+  return { resume, email, name };
+};
+
 export default function Home() {
+  const reminderResumeHint = getReminderResumeHint();
   const [phase, setPhase] = useState<AppPhase>('welcome');
   const [selectedProfile, setSelectedProfile] = useState<string>('');
   const [selectedLevel, setSelectedLevel] = useState<string>('');
@@ -33,9 +70,11 @@ export default function Home() {
     setEmployeeName,
     setEmployeeEmail,
     finalReport,
+    checkSessionForEmail,
+    loadSessionForEmail,
   } = useChat();
 
-  const hasSavedSession = messages.length > 0 || Boolean(conversationId) || Boolean(finalReport);
+  const hasSavedSession = messages.length > 0 || Boolean(finalReport);
 
   useEffect(() => {
     try {
@@ -94,8 +133,37 @@ export default function Home() {
     setPhase('welcome');
   };
 
-  const handleResumeSession = () => {
+  const handleResumeSession = async (payload?: { userName: string; userEmail: string; profile: string; source: 'local' | 'reminder' | 'remote' }) => {
+    if (payload) {
+      const resolvedEmail = (payload.userEmail || employeeEmail).trim();
+      const resolvedName = (payload.userName || employeeName).trim() || buildFallbackNameFromEmail(resolvedEmail);
+
+      setEmployeeName(resolvedName);
+      setEmployeeEmail(resolvedEmail);
+      if (payload.profile) {
+        setSelectedProfile(payload.profile);
+      }
+
+      let restored = false;
+      if (resolvedEmail) {
+        restored = await loadSessionForEmail(resolvedEmail);
+      }
+
+      if (!restored) {
+        return false;
+      }
+
+      setPhase('chat');
+      return true;
+    }
+
+    const hasExistingContent = messages.length > 0 || Boolean(finalReport);
+    if (!hasExistingContent) {
+      return false;
+    }
+
     setPhase('chat');
+    return true;
   };
 
   const handleRestart = () => {
@@ -127,6 +195,10 @@ export default function Home() {
             hasSavedSession={hasSavedSession}
             onResumeSession={handleResumeSession}
             onStartFresh={handleRestart}
+            checkSessionByEmail={checkSessionForEmail}
+            initialUserName={reminderResumeHint.name}
+            initialUserEmail={reminderResumeHint.email}
+            resumeFromReminderLink={reminderResumeHint.resume}
           />
         )}
 

@@ -5,11 +5,22 @@ import { Link } from 'wouter';
 import { cn } from '@/lib/utils';
 import { useMutation } from '@tanstack/react-query';
 
+interface ResumeSessionPayload {
+  userName: string;
+  userEmail: string;
+  profile: string;
+  source: 'local' | 'reminder' | 'remote';
+}
+
 interface WelcomeScreenProps {
   onStart: (conversationId: number, profile: string, level: string, userName: string, userEmail: string) => void;
   hasSavedSession?: boolean;
-  onResumeSession?: () => void;
+  onResumeSession?: (payload?: ResumeSessionPayload) => Promise<boolean> | boolean;
   onStartFresh?: () => void;
+  checkSessionByEmail?: (email: string) => Promise<boolean>;
+  initialUserName?: string;
+  initialUserEmail?: string;
+  resumeFromReminderLink?: boolean;
 }
 
 const CHAT_STORAGE_KEY = 'uix-chat-session-v1';
@@ -47,13 +58,25 @@ function CheckIcon() {
   );
 }
 
-export function WelcomeScreen({ onStart, hasSavedSession = false, onResumeSession, onStartFresh }: WelcomeScreenProps) {
-  const [step, setStep] = useState<'intro' | 'profile'>('intro');
+export function WelcomeScreen({
+  onStart,
+  hasSavedSession = false,
+  onResumeSession,
+  onStartFresh,
+  checkSessionByEmail,
+  initialUserName = '',
+  initialUserEmail = '',
+  resumeFromReminderLink = false,
+}: WelcomeScreenProps) {
+  const [step, setStep] = useState<'intro' | 'profile'>(resumeFromReminderLink ? 'profile' : 'intro');
   const [expandedGroup, setExpandedGroup] = useState<string | null>(null);
   const [selectedProfile, setSelectedProfile] = useState<string>('');
-  const [userName, setUserName] = useState<string>('');
-  const [userEmail, setUserEmail] = useState<string>('');
+  const [userName, setUserName] = useState<string>(initialUserName);
+  const [userEmail, setUserEmail] = useState<string>(initialUserEmail);
   const [hasSavedSessionForEmail, setHasSavedSessionForEmail] = useState(false);
+  const [hasRemoteSessionForEmail, setHasRemoteSessionForEmail] = useState(false);
+  const [isCheckingRemoteSession, setIsCheckingRemoteSession] = useState(false);
+  const [resumeError, setResumeError] = useState('');
 
   const isValidEmail = (value: string) => /\S+@\S+\.\S+/.test(value.trim());
 
@@ -90,7 +113,10 @@ export function WelcomeScreen({ onStart, hasSavedSession = false, onResumeSessio
   };
 
   const canStart = selectedProfile !== '' && userName.trim().length > 0 && isValidEmail(userEmail);
-  const hasAnyResumeCandidate = hasSavedSessionForEmail || hasSavedSession;
+  const hasReminderResumeCandidate = resumeFromReminderLink
+    && Boolean(normalizeEmail(initialUserEmail))
+    && normalizeEmail(initialUserEmail) === normalizeEmail(userEmail);
+  const hasAnyResumeCandidate = hasSavedSessionForEmail || hasReminderResumeCandidate || hasRemoteSessionForEmail;
   const showResumeOptionsInProfile = isValidEmail(userEmail);
 
   useEffect(() => {
@@ -115,8 +141,7 @@ export function WelcomeScreen({ onStart, hasSavedSession = false, onResumeSessio
       };
 
       const storedEmail = normalizeEmail(parsed.employeeEmail || '');
-      const hasContent = Boolean(parsed.conversationId)
-        || Boolean(parsed.finalReport)
+      const hasContent = Boolean(parsed.finalReport)
         || (Array.isArray(parsed.messages) && parsed.messages.length > 0);
 
       setHasSavedSessionForEmail(storedEmail === email && hasContent);
@@ -125,9 +150,55 @@ export function WelcomeScreen({ onStart, hasSavedSession = false, onResumeSessio
     }
   }, [userEmail]);
 
+  useEffect(() => {
+    let cancelled = false;
+
+    const run = async () => {
+      if (!checkSessionByEmail || !isValidEmail(userEmail)) {
+        setHasRemoteSessionForEmail(false);
+        setIsCheckingRemoteSession(false);
+        return;
+      }
+
+      setIsCheckingRemoteSession(true);
+      const exists = await checkSessionByEmail(userEmail);
+
+      if (!cancelled) {
+        setHasRemoteSessionForEmail(exists);
+        setIsCheckingRemoteSession(false);
+      }
+    };
+
+    void run();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [checkSessionByEmail, userEmail]);
+
   const handleStart = () => {
     if (!canStart) return;
     createConversation.mutate({ profile: selectedProfile });
+  };
+
+  const handleStartFresh = (nextStep: 'intro' | 'profile' = 'profile') => {
+    onStartFresh?.();
+    setSelectedProfile('');
+    setExpandedGroup(null);
+    setUserName('');
+    setUserEmail('');
+    setHasSavedSessionForEmail(false);
+    setHasRemoteSessionForEmail(false);
+    setResumeError('');
+    setStep(nextStep);
+  };
+
+  const handleResume = async (payload?: ResumeSessionPayload) => {
+    setResumeError('');
+    const result = await onResumeSession?.(payload);
+    if (result === false) {
+      setResumeError('No pudimos cargar el historial para este correo. Verifica que uses el mismo correo del registro.');
+    }
   };
 
   return (
@@ -197,17 +268,19 @@ export function WelcomeScreen({ onStart, hasSavedSession = false, onResumeSessio
               {hasSavedSession ? (
                 <div className="space-y-3">
                   <button
-                    onClick={() => onResumeSession?.()}
+                    onClick={() => {
+                      setResumeError('');
+                      setStep('profile');
+                    }}
                     className="w-full group flex items-center justify-center gap-2.5 py-4 rounded-2xl font-semibold text-white btn-brand"
                   >
-                    <span>Continuar conversación anterior</span>
+                    <span>Retomar con correo</span>
                     <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform duration-200" />
                   </button>
 
                   <button
                     onClick={() => {
-                      onStartFresh?.();
-                      setStep('profile');
+                      handleStartFresh('profile');
                     }}
                     className="w-full group flex items-center justify-center gap-2.5 py-4 rounded-2xl font-semibold text-foreground glass-card border border-white/12 hover:border-white/25 transition-all duration-200"
                   >
@@ -262,17 +335,30 @@ export function WelcomeScreen({ onStart, hasSavedSession = false, onResumeSessio
               {showResumeOptionsInProfile && (
                 <div className="space-y-2 rounded-2xl border border-secondary/25 bg-secondary/10 p-3.5">
                   <p className="text-xs text-secondary font-medium">
-                    {hasAnyResumeCandidate
+                    {isCheckingRemoteSession
+                      ? 'Verificando historial para este correo...'
+                      : hasAnyResumeCandidate
                       ? hasSavedSessionForEmail
                         ? 'Detectamos una conversación guardada para este correo.'
-                        : 'Detectamos una conversación guardada en este navegador.'
-                      : 'Puedes retomar si ya existe historial para este correo en este navegador.'}
+                        : hasRemoteSessionForEmail
+                          ? 'Detectamos una conversación guardada para este correo en el servidor.'
+                          : 'Detectamos una conversación guardada para este correo en el enlace de recordatorio.'
+                      : 'Puedes retomar si ya existe historial para este correo.'}
                   </p>
                   <div className="grid gap-2 sm:grid-cols-2">
                     <button
                       onClick={() => {
                         if (!hasAnyResumeCandidate) return;
-                        onResumeSession?.();
+                        void handleResume({
+                          userName: userName.trim(),
+                          userEmail: userEmail.trim(),
+                          profile: selectedProfile || 'UX/UI Designer',
+                          source: hasReminderResumeCandidate && !hasSavedSessionForEmail && !hasSavedSession
+                            ? 'reminder'
+                            : hasRemoteSessionForEmail
+                              ? 'remote'
+                              : 'local',
+                        });
                       }}
                       disabled={!hasAnyResumeCandidate}
                       className="w-full rounded-xl py-2.5 text-sm font-semibold text-foreground glass-card border border-white/12 hover:border-primary/40 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
@@ -280,12 +366,15 @@ export function WelcomeScreen({ onStart, hasSavedSession = false, onResumeSessio
                       Retomar conversación
                     </button>
                     <button
-                      onClick={() => onStartFresh?.()}
+                      onClick={() => handleStartFresh('profile')}
                       className="w-full rounded-xl py-2.5 text-sm font-semibold text-white btn-brand"
                     >
                       Empezar nueva
                     </button>
                   </div>
+                  {resumeError && (
+                    <p className="text-xs text-rose-300">{resumeError}</p>
+                  )}
                 </div>
               )}
 

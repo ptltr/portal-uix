@@ -1,5 +1,6 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import { syncCollaboratorAssessment } from "@/lib/collaboratorProgressApi";
+import { fetchSessionByEmail, hasSessionByEmail, saveSessionByEmail } from "@/lib/chatSessionApi";
 
 export type MessageRole = "user" | "assistant" | "system";
 
@@ -32,7 +33,7 @@ type SignalState = {
   opportunities: Record<string, number>;
 };
 
-interface PersistedChatState {
+export interface PersistedChatState {
   conversationId: number | null;
   messages: ChatMessage[];
   isEvaluationComplete: boolean;
@@ -483,6 +484,15 @@ const keywordMatches = (text: string, keyword: string): boolean => {
   return regex.test(normalizedText);
 };
 
+const isGreetingInput = (value: string): boolean => {
+  const normalizedValue = normalize(value);
+  const compact = normalizedValue.replace(/[!?.,;:]/g, "").trim();
+  if (compact.length > 24) return false;
+
+  return /^(hola|holi|buenas|buen dia|hello|hey|hi|que tal|que onda)$/.test(compact)
+    || /^(hola|holi|buenas)\b/.test(compact);
+};
+
 const formatQuestionWithOptions = (name: string, stepIndex: number): string => {
   const step = STEPS[stepIndex];
   if (!step) return "";
@@ -576,6 +586,7 @@ const buildMixedResourceRecommendations = (opportunityKeys: string[], total = 5)
 export function useChat() {
   const hasHydratedRef = useRef(false);
   const lastSyncedAssessmentRef = useRef<string>("");
+  const remoteSaveTimeoutRef = useRef<number | null>(null);
   const [conversationId, setConversationId] = useState<number | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isTyping, setIsTyping] = useState(false);
@@ -594,42 +605,32 @@ export function useChat() {
 
   const signalsRef = useRef<SignalState>({ strengths: {}, opportunities: {} });
 
-  useEffect(() => {
-    try {
-      const raw = localStorage.getItem(CHAT_STORAGE_KEY);
-      if (!raw) {
-        hasHydratedRef.current = true;
-        return;
-      }
+  const applyPersistedState = useCallback((parsed: PersistedChatState) => {
+    const parsedMessages = Array.isArray(parsed.messages) ? parsed.messages : [];
+    const hasMeaningfulContent = parsedMessages.length > 0 || Boolean(parsed.finalReport);
 
-      const parsed = JSON.parse(raw) as PersistedChatState;
-      setConversationId(typeof parsed.conversationId === "number" ? parsed.conversationId : null);
-      setMessages(Array.isArray(parsed.messages) ? parsed.messages : []);
-      setIsEvaluationComplete(Boolean(parsed.isEvaluationComplete));
-      setEmployeeName(parsed.employeeName || "");
-      setEmployeeEmail(parsed.employeeEmail || "");
-      setCurrentStep(typeof parsed.currentStep === "number" ? parsed.currentStep : 0);
-      setFinalReport(migrateLegacyReportContent(parsed.finalReport || ""));
-      setFollowUpCount(typeof parsed.followUpCount === "number" ? parsed.followUpCount : 0);
-      setIsInFollowUp(Boolean(parsed.isInFollowUp));
+    setConversationId(hasMeaningfulContent && typeof parsed.conversationId === "number" ? parsed.conversationId : null);
+    setMessages(parsedMessages);
+    setIsEvaluationComplete(hasMeaningfulContent && Boolean(parsed.isEvaluationComplete));
+    setEmployeeName(parsed.employeeName || "");
+    setEmployeeEmail(parsed.employeeEmail || "");
+    setCurrentStep(hasMeaningfulContent && typeof parsed.currentStep === "number" ? parsed.currentStep : 0);
+    setFinalReport(migrateLegacyReportContent(parsed.finalReport || ""));
+    setFollowUpCount(hasMeaningfulContent && typeof parsed.followUpCount === "number" ? parsed.followUpCount : 0);
+    setIsInFollowUp(hasMeaningfulContent && Boolean(parsed.isInFollowUp));
 
-      if (parsed.signals?.strengths && parsed.signals?.opportunities) {
-        signalsRef.current = {
-          strengths: parsed.signals.strengths,
-          opportunities: parsed.signals.opportunities,
-        };
-      }
-    } catch {
-      // Ignore malformed local data and continue with a fresh session.
-    } finally {
-      hasHydratedRef.current = true;
+    if (parsed.signals?.strengths && parsed.signals?.opportunities) {
+      signalsRef.current = {
+        strengths: parsed.signals.strengths,
+        opportunities: parsed.signals.opportunities,
+      };
+    } else {
+      signalsRef.current = { strengths: {}, opportunities: {} };
     }
   }, []);
 
-  useEffect(() => {
-    if (!hasHydratedRef.current || isTyping) return;
-
-    const snapshot: PersistedChatState = {
+  const getPersistedSnapshot = useCallback((): PersistedChatState => {
+    return {
       conversationId,
       messages,
       isEvaluationComplete,
@@ -642,13 +643,97 @@ export function useChat() {
       signals: signalsRef.current,
       updatedAt: Date.now(),
     };
+  }, [conversationId, messages, isEvaluationComplete, employeeName, employeeEmail, currentStep, finalReport, followUpCount, isInFollowUp]);
+
+  const hasSnapshotContent = useCallback((snapshot: PersistedChatState | null | undefined): boolean => {
+    if (!snapshot) return false;
+
+    return (
+      snapshot.messages.length > 0
+      || Boolean(snapshot.finalReport)
+    );
+  }, []);
+
+  const readLocalSnapshotForEmail = useCallback((email: string): PersistedChatState | null => {
+    try {
+      const raw = localStorage.getItem(CHAT_STORAGE_KEY);
+      if (!raw) return null;
+
+      const parsed = JSON.parse(raw) as PersistedChatState;
+      if ((parsed.employeeEmail || "").trim().toLowerCase() !== email.trim().toLowerCase()) {
+        return null;
+      }
+
+      return parsed;
+    } catch {
+      return null;
+    }
+  }, []);
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(CHAT_STORAGE_KEY);
+      if (!raw) {
+        hasHydratedRef.current = true;
+        return;
+      }
+
+      const parsed = JSON.parse(raw) as PersistedChatState;
+      applyPersistedState(parsed);
+    } catch {
+      // Ignore malformed local data and continue with a fresh session.
+    } finally {
+      hasHydratedRef.current = true;
+    }
+  }, [applyPersistedState]);
+
+  useEffect(() => {
+    if (!hasHydratedRef.current || isTyping) return;
+
+    const snapshot = getPersistedSnapshot();
 
     try {
       localStorage.setItem(CHAT_STORAGE_KEY, JSON.stringify(snapshot));
     } catch {
       // Ignore storage write errors (quota/private mode).
     }
-  }, [conversationId, messages, isEvaluationComplete, employeeName, employeeEmail, currentStep, finalReport, followUpCount, isInFollowUp, isTyping]);
+  }, [getPersistedSnapshot, isTyping]);
+
+  useEffect(() => {
+    if (!hasHydratedRef.current || isTyping || !employeeEmail.trim()) return;
+
+    const hasContent = messages.length > 0 || Boolean(finalReport);
+    if (!hasContent) return;
+
+    if (remoteSaveTimeoutRef.current) {
+      window.clearTimeout(remoteSaveTimeoutRef.current);
+    }
+
+    remoteSaveTimeoutRef.current = window.setTimeout(() => {
+      const snapshot = getPersistedSnapshot();
+      void saveSessionByEmail(employeeEmail, snapshot).catch(() => {
+        // Ignore remote persistence errors to keep chat flow uninterrupted.
+      });
+    }, 400);
+
+    return () => {
+      if (remoteSaveTimeoutRef.current) {
+        window.clearTimeout(remoteSaveTimeoutRef.current);
+        remoteSaveTimeoutRef.current = null;
+      }
+    };
+  }, [conversationId, currentStep, employeeEmail, finalReport, getPersistedSnapshot, isTyping, messages.length]);
+
+  useEffect(() => {
+    if (!hasHydratedRef.current || !employeeEmail.trim()) return;
+
+    const snapshot = getPersistedSnapshot();
+    if (!hasSnapshotContent(snapshot)) return;
+
+    void saveSessionByEmail(employeeEmail, snapshot).catch(() => {
+      // Ignore remote persistence errors to keep UX responsive.
+    });
+  }, [employeeEmail, getPersistedSnapshot, hasSnapshotContent]);
 
   useEffect(() => {
     if (!isEvaluationComplete || !employeeEmail.trim() || !finalReport.trim()) return;
@@ -799,6 +884,13 @@ ${followUpEmailLine}
     const cleaned = userInput.trim();
     const normalized = normalize(cleaned);
     const step = STEPS[stepIndex];
+
+    if (isGreetingInput(cleaned)) {
+      return {
+        text: "Hola. Si quieres retomar una conversación previa, vuelve al inicio y usa 'Retomar con correo' con el mismo email. Si prefieres, también podemos comenzar una nueva evaluación desde cero.",
+        followUpTriggered: true,
+      };
+    }
 
     if (!step) {
       return { text: "Te leo 👀", followUpTriggered: false };
@@ -1160,6 +1252,38 @@ ${followUpEmailLine}
     }
   }, []);
 
+  const checkSessionForEmail = useCallback(async (email: string): Promise<boolean> => {
+    return hasSessionByEmail(email);
+  }, []);
+
+  const loadSessionForEmail = useCallback(async (email: string): Promise<boolean> => {
+    const normalizedEmail = email.trim().toLowerCase();
+
+    const remoteSession = await fetchSessionByEmail(normalizedEmail);
+    if (remoteSession && hasSnapshotContent(remoteSession)) {
+      applyPersistedState({
+        ...remoteSession,
+        employeeEmail: normalizedEmail,
+        employeeName: remoteSession.employeeName || employeeName,
+        updatedAt: Date.now(),
+      });
+      return true;
+    }
+
+    const localSession = readLocalSnapshotForEmail(normalizedEmail);
+    if (localSession && hasSnapshotContent(localSession)) {
+      applyPersistedState({
+        ...localSession,
+        employeeEmail: normalizedEmail,
+        employeeName: localSession.employeeName || employeeName,
+        updatedAt: Date.now(),
+      });
+      return true;
+    }
+
+    return false;
+  }, [applyPersistedState, employeeName, hasSnapshotContent, readLocalSnapshotForEmail]);
+
   return {
     conversationId,
     setConversationId,
@@ -1173,5 +1297,7 @@ ${followUpEmailLine}
     employeeEmail,
     setEmployeeEmail,
     finalReport,
+    checkSessionForEmail,
+    loadSessionForEmail,
   };
 }
