@@ -54,6 +54,51 @@ export interface SendReminderPayload {
 
 const LOCAL_PROGRESS_KEY = "uix-collaborator-progress-v1";
 const REMINDER_API_BASE_URL_KEY = "uix-reminder-api-base-url";
+const DEFAULT_AUTOMATIC_BACKEND_BASE_URL = "https://script.google.com/macros/s/AKfycbzBdx5IHMaqNjYcN5O6z9k1oH9sbOffc0Ik353LF613zmZ0bROUDQSJQUTp2JvZ6RHJoQ/exec";
+
+const isAppsScriptEndpoint = (url: string): boolean => {
+  return /script\.google\.com\/macros\/s\/.+\/exec/.test(url);
+};
+
+const buildAppsScriptUrl = (baseUrl: string, action: string, params?: Record<string, string>): string => {
+  const url = new URL(baseUrl);
+  url.searchParams.set("action", action);
+
+  if (params) {
+    for (const [key, value] of Object.entries(params)) {
+      url.searchParams.set(key, value);
+    }
+  }
+
+  return url.toString();
+};
+
+const callAppsScriptPost = async <T>(baseUrl: string, action: string, payload: unknown): Promise<T> => {
+  const body = new URLSearchParams();
+  body.set("action", action);
+  body.set("payload", JSON.stringify(payload));
+
+  const response = await fetch(baseUrl, {
+    method: "POST",
+    body,
+  });
+
+  if (!response.ok) {
+    throw new Error(`Apps Script request failed: ${response.status}`);
+  }
+
+  return (await response.json()) as T;
+};
+
+const callAppsScriptGet = async <T>(baseUrl: string, action: string, params?: Record<string, string>): Promise<T> => {
+  const response = await fetch(buildAppsScriptUrl(baseUrl, action, params));
+
+  if (!response.ok) {
+    throw new Error(`Apps Script request failed: ${response.status}`);
+  }
+
+  return (await response.json()) as T;
+};
 
 const shouldIgnoreLocalApiOnPublicHost = (url: string): boolean => {
   if (typeof window === "undefined") return false;
@@ -65,11 +110,11 @@ const shouldIgnoreLocalApiOnPublicHost = (url: string): boolean => {
 
 const getApiBaseUrl = (): string => {
   const fromEnv = (import.meta as ImportMeta & { env?: Record<string, string> }).env?.VITE_API_BASE_URL;
-  if (!fromEnv) return "";
+  if (!fromEnv) return DEFAULT_AUTOMATIC_BACKEND_BASE_URL;
 
   const normalized = fromEnv.replace(/\/$/, "");
 
-  if (shouldIgnoreLocalApiOnPublicHost(normalized)) return "";
+  if (shouldIgnoreLocalApiOnPublicHost(normalized)) return DEFAULT_AUTOMATIC_BACKEND_BASE_URL;
 
   return normalized;
 };
@@ -93,7 +138,7 @@ const getReminderApiBaseUrl = (): string => {
     // Ignore localStorage access errors in restricted environments.
   }
 
-  return "";
+  return DEFAULT_AUTOMATIC_BACKEND_BASE_URL;
 };
 
 export const isReminderBackendConfigured = (): boolean => {
@@ -224,6 +269,10 @@ export const uploadDeliverable = async (payload: DeliverablePayload): Promise<De
   const baseUrl = getApiBaseUrl();
 
   if (baseUrl) {
+    if (isAppsScriptEndpoint(baseUrl)) {
+      return callAppsScriptPost<DeliverableRecord>(baseUrl, "uploadDeliverable", payload);
+    }
+
     const response = await fetch(`${baseUrl}/api/collaborators/progress/deliverables`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -245,6 +294,10 @@ export const syncCollaboratorAssessment = async (payload: SyncCollaboratorAssess
   const baseUrl = getApiBaseUrl();
 
   if (baseUrl) {
+    if (isAppsScriptEndpoint(baseUrl)) {
+      return callAppsScriptPost<CollaboratorProgress>(baseUrl, "syncCollaboratorAssessment", payload);
+    }
+
     const response = await fetch(`${baseUrl}/api/collaborators/progress/assessments`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -266,6 +319,10 @@ export const getCollaboratorProgress = async (collaboratorEmail: string): Promis
   const baseUrl = getApiBaseUrl();
 
   if (baseUrl) {
+    if (isAppsScriptEndpoint(baseUrl)) {
+      return callAppsScriptGet<CollaboratorProgress>(baseUrl, "getCollaboratorProgress", { email });
+    }
+
     const response = await fetch(`${baseUrl}/api/collaborators/progress/${encodeURIComponent(email)}`);
     if (!response.ok) {
       throw new Error(`Failed to fetch collaborator progress: ${response.status}`);
@@ -283,6 +340,10 @@ export const listCollaboratorsProgress = async (): Promise<CollaboratorProgress[
   const baseUrl = getApiBaseUrl();
 
   if (baseUrl) {
+    if (isAppsScriptEndpoint(baseUrl)) {
+      return callAppsScriptGet<CollaboratorProgress[]>(baseUrl, "listCollaboratorsProgress");
+    }
+
     const response = await fetch(`${baseUrl}/api/collaborators/progress`);
     if (!response.ok) {
       throw new Error(`Failed to fetch collaborators progress list: ${response.status}`);
@@ -300,6 +361,10 @@ export const sendProgressReminder = async (payload: SendReminderPayload): Promis
 
   if (!baseUrl) {
     throw new Error("Automatic reminder requires VITE_API_BASE_URL configuration.");
+  }
+
+  if (isAppsScriptEndpoint(baseUrl)) {
+    return callAppsScriptPost<{ sent: boolean; id?: string }>(baseUrl, "sendProgressReminder", payload);
   }
 
   let response: Response;

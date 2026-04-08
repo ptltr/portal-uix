@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
 import { Link } from 'wouter';
 import { ArrowLeft, LockKeyhole, LogOut, Mail, TrendingUp, Users, ClipboardList } from 'lucide-react';
-import { isReminderBackendConfigured, listCollaboratorsProgress, sendProgressReminder, type CollaboratorProgress } from '@/lib/collaboratorProgressApi';
+import { getReminderBackendBaseUrl, isReminderBackendConfigured, listCollaboratorsProgress, sendProgressReminder, setReminderBackendBaseUrl, type CollaboratorProgress } from '@/lib/collaboratorProgressApi';
 import { authenticateCapitalHumano, clearCapitalHumanoAuth, isCapitalHumanoAuthenticated, isUsingDefaultCapitalHumanoCode } from '@/lib/capitalHumanoAuth';
 import { Progress } from '@/components/ui/progress';
 
@@ -56,6 +56,8 @@ export default function CapitalHumano() {
   const [isAuthorized, setIsAuthorized] = useState(() => isCapitalHumanoAuthenticated());
   const [sendingReminderByEmail, setSendingReminderByEmail] = useState<Record<string, boolean>>({});
   const [reminderFeedbackByEmail, setReminderFeedbackByEmail] = useState<Record<string, string>>({});
+  const [reminderApiUrlInput, setReminderApiUrlInput] = useState(() => getReminderBackendBaseUrl());
+  const [reminderConfigFeedback, setReminderConfigFeedback] = useState<string | null>(null);
   const autoReminderEnabled = isReminderBackendConfigured();
 
   useEffect(() => {
@@ -119,10 +121,9 @@ export default function CapitalHumano() {
     if (pendingCoursesCount <= 0) return;
 
     if (!autoReminderEnabled) {
-      window.location.href = buildReminderMailto(collaborator);
       setReminderFeedbackByEmail((prev) => ({
         ...prev,
-        [email]: 'Se abrió tu cliente de correo con el recordatorio prellenado.',
+        [email]: 'Configura la URL del backend para envío automático de recordatorios.',
       }));
       return;
     }
@@ -139,14 +140,27 @@ export default function CapitalHumano() {
         totalResourcesCount: collaborator.totalResourcesCount,
       });
       setReminderFeedbackByEmail((prev) => ({ ...prev, [email]: 'Recordatorio enviado correctamente.' }));
-    } catch {
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Error desconocido al enviar recordatorio.';
       setReminderFeedbackByEmail((prev) => ({
         ...prev,
-        [email]: 'No fue posible enviar automáticamente. Puedes usar el envío manual.',
+        [email]: `No fue posible enviar automáticamente. ${message}`,
       }));
     } finally {
       setSendingReminderByEmail((prev) => ({ ...prev, [email]: false }));
     }
+  };
+
+  const handleSaveReminderApiUrl = () => {
+    const trimmed = reminderApiUrlInput.trim();
+    if (!trimmed) {
+      setReminderConfigFeedback('Ingresa una URL válida del backend para habilitar el envío automático.');
+      return;
+    }
+
+    setReminderBackendBaseUrl(trimmed);
+    setReminderApiUrlInput(getReminderBackendBaseUrl());
+    setReminderConfigFeedback('URL de backend guardada. Ya puedes enviar recordatorios automáticos.');
   };
 
   if (!isAuthorized) {
@@ -272,6 +286,36 @@ export default function CapitalHumano() {
           ))}
         </div>
 
+        <div className="glass-card rounded-2xl border border-white/8 p-4 md:p-5 space-y-3">
+          <div className="flex flex-col gap-1">
+            <h2 className="text-sm font-semibold text-foreground">Configuración de recordatorios automáticos</h2>
+            <p className="text-xs text-muted-foreground">
+              Este ajuste solo afecta al envío automático de correos y no cambia el historial guardado en la misma liga de GitHub Pages.
+            </p>
+          </div>
+          <div className="flex flex-col md:flex-row gap-2">
+            <input
+              type="url"
+              value={reminderApiUrlInput}
+              onChange={(event) => setReminderApiUrlInput(event.target.value)}
+              placeholder="https://tu-backend-recordatorios.com"
+              className="w-full rounded-xl border border-white/10 bg-transparent px-3.5 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+            />
+            <button
+              onClick={handleSaveReminderApiUrl}
+              className="inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold text-foreground border border-white/15 bg-white/10 hover:border-primary/40 transition-colors"
+            >
+              Guardar URL
+            </button>
+          </div>
+          <p className="text-xs text-foreground/80">
+            Estado: {autoReminderEnabled ? 'Automático activo' : 'Automático inactivo'}
+          </p>
+          {reminderConfigFeedback ? (
+            <p className="text-xs text-foreground/80">{reminderConfigFeedback}</p>
+          ) : null}
+        </div>
+
         <div className="glass-card rounded-3xl border border-white/8 p-4 md:p-6">
           {loading ? (
             <div className="py-12 text-center text-muted-foreground text-sm">Cargando avance de colaboradores...</div>
@@ -324,7 +368,7 @@ export default function CapitalHumano() {
                                 ? 'Enviando...'
                                 : autoReminderEnabled
                                   ? 'Enviar recordatorio'
-                                  : 'Enviar recordatorio'}
+                                  : 'Configurar envío automático'}
                             </span>
                           </button>
                           {autoReminderEnabled ? (

@@ -670,6 +670,11 @@ export function useChat() {
     }
   }, []);
 
+  const hasLocalSessionForEmail = useCallback((email: string): boolean => {
+    const localSnapshot = readLocalSnapshotForEmail(email);
+    return hasSnapshotContent(localSnapshot);
+  }, [hasSnapshotContent, readLocalSnapshotForEmail]);
+
   useEffect(() => {
     try {
       const raw = localStorage.getItem(CHAT_STORAGE_KEY);
@@ -1253,29 +1258,32 @@ ${followUpEmailLine}
   }, []);
 
   const checkSessionForEmail = useCallback(async (email: string): Promise<boolean> => {
+    const hasLocal = hasLocalSessionForEmail(email);
+    if (hasLocal) return true;
+
     return hasSessionByEmail(email);
-  }, []);
+  }, [hasLocalSessionForEmail]);
 
   const loadSessionForEmail = useCallback(async (email: string): Promise<boolean> => {
     const normalizedEmail = email.trim().toLowerCase();
 
-    const remoteSession = await fetchSessionByEmail(normalizedEmail);
-    if (remoteSession && hasSnapshotContent(remoteSession)) {
-      applyPersistedState({
-        ...remoteSession,
-        employeeEmail: normalizedEmail,
-        employeeName: remoteSession.employeeName || employeeName,
-        updatedAt: Date.now(),
-      });
-      return true;
-    }
+    const [remoteSession, localSession] = await Promise.all([
+      fetchSessionByEmail(normalizedEmail),
+      Promise.resolve(readLocalSnapshotForEmail(normalizedEmail)),
+    ]);
 
-    const localSession = readLocalSnapshotForEmail(normalizedEmail);
-    if (localSession && hasSnapshotContent(localSession)) {
+    const validRemote = remoteSession && hasSnapshotContent(remoteSession) ? remoteSession : null;
+    const validLocal = localSession && hasSnapshotContent(localSession) ? localSession : null;
+
+    const remoteUpdatedAt = validRemote?.updatedAt || 0;
+    const localUpdatedAt = validLocal?.updatedAt || 0;
+    const selected = (validRemote && remoteUpdatedAt >= localUpdatedAt) ? validRemote : validLocal;
+
+    if (selected) {
       applyPersistedState({
-        ...localSession,
+        ...selected,
         employeeEmail: normalizedEmail,
-        employeeName: localSession.employeeName || employeeName,
+        employeeName: selected.employeeName || employeeName,
         updatedAt: Date.now(),
       });
       return true;

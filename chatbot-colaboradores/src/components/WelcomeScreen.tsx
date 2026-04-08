@@ -77,6 +77,7 @@ export function WelcomeScreen({
   const [hasRemoteSessionForEmail, setHasRemoteSessionForEmail] = useState(false);
   const [isCheckingRemoteSession, setIsCheckingRemoteSession] = useState(false);
   const [resumeError, setResumeError] = useState('');
+  const [ignoreReminderResume, setIgnoreReminderResume] = useState(false);
 
   const isValidEmail = (value: string) => /\S+@\S+\.\S+/.test(value.trim());
 
@@ -113,10 +114,11 @@ export function WelcomeScreen({
   };
 
   const canStart = selectedProfile !== '' && userName.trim().length > 0 && isValidEmail(userEmail);
-  const hasReminderResumeCandidate = resumeFromReminderLink
+  const hasReminderResumeCandidate = !ignoreReminderResume
+    && resumeFromReminderLink
     && Boolean(normalizeEmail(initialUserEmail))
     && normalizeEmail(initialUserEmail) === normalizeEmail(userEmail);
-  const hasAnyResumeCandidate = hasSavedSessionForEmail || hasReminderResumeCandidate || hasRemoteSessionForEmail;
+  const hasAnyResumeCandidate = hasSavedSessionForEmail || hasRemoteSessionForEmail;
   const showResumeOptionsInProfile = isValidEmail(userEmail);
 
   useEffect(() => {
@@ -181,12 +183,15 @@ export function WelcomeScreen({
     createConversation.mutate({ profile: selectedProfile });
   };
 
-  const handleStartFresh = (nextStep: 'intro' | 'profile' = 'profile') => {
+  const handleStartFresh = (nextStep: 'intro' | 'profile' = 'profile', preserveInputs = false) => {
     onStartFresh?.();
-    setSelectedProfile('');
+    setIgnoreReminderResume(true);
+    if (!preserveInputs) {
+      setSelectedProfile('');
+      setUserName('');
+      setUserEmail('');
+    }
     setExpandedGroup(null);
-    setUserName('');
-    setUserEmail('');
     setHasSavedSessionForEmail(false);
     setHasRemoteSessionForEmail(false);
     setResumeError('');
@@ -366,7 +371,7 @@ export function WelcomeScreen({
                       Retomar conversación
                     </button>
                     <button
-                      onClick={() => handleStartFresh('profile')}
+                      onClick={() => handleStartFresh('profile', true)}
                       className="w-full rounded-xl py-2.5 text-sm font-semibold text-white btn-brand"
                     >
                       Empezar nueva
