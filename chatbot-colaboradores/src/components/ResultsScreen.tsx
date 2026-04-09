@@ -265,6 +265,13 @@ export function ResultsScreen({ messages, onRestart, onBackToChat, profile, empl
             alt="UIX"
             className="w-10 h-10 object-contain"
           />
+          <button
+            onClick={onBackToChat}
+            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl glass-card border border-white/10 text-sm font-medium text-foreground hover:border-primary/40 transition-colors"
+          >
+            <ArrowLeft className="w-4 h-4" />
+            <span>Regresar</span>
+          </button>
         </motion.div>
 
         {/* Title section */}
