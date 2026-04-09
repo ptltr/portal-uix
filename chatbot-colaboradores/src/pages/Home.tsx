@@ -151,7 +151,7 @@ export default function Home() {
 
       if (!restored) {
         const hasExistingContent = messages.length > 0 || Boolean(finalReport);
-        if (payload.source === 'reminder' && hasExistingContent) {
+        if (hasExistingContent) {
           setPhase('chat');
           return true;
         }
