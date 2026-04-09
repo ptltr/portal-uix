@@ -562,21 +562,26 @@ export const uploadDeliverable = async (payload: DeliverablePayload): Promise<De
   const baseUrl = getApiBaseUrl();
 
   if (baseUrl) {
-    if (isAppsScriptEndpoint(baseUrl)) {
-      return callAppsScriptPost<DeliverableRecord>(baseUrl, "uploadDeliverable", payload);
+    try {
+      if (isAppsScriptEndpoint(baseUrl)) {
+        return await callAppsScriptPost<DeliverableRecord>(baseUrl, "uploadDeliverable", payload);
+      }
+
+      const response = await fetch(`${baseUrl}/api/collaborators/progress/deliverables`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to upload deliverable: ${response.status}`);
+      }
+
+      return (await response.json()) as DeliverableRecord;
+    } catch {
+      // Keep progress tracking usable even if remote backend is unreachable.
+      return upsertLocalDeliverable(payload);
     }
-
-    const response = await fetch(`${baseUrl}/api/collaborators/progress/deliverables`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
-
-    if (!response.ok) {
-      throw new Error(`Failed to upload deliverable: ${response.status}`);
-    }
-
-    return (await response.json()) as DeliverableRecord;
   }
 
   // Fallback for environments without backend.
@@ -587,21 +592,26 @@ export const syncCollaboratorAssessment = async (payload: SyncCollaboratorAssess
   const baseUrl = getApiBaseUrl();
 
   if (baseUrl) {
-    if (isAppsScriptEndpoint(baseUrl)) {
-      return callAppsScriptPost<CollaboratorProgress>(baseUrl, "syncCollaboratorAssessment", payload);
+    try {
+      if (isAppsScriptEndpoint(baseUrl)) {
+        return await callAppsScriptPost<CollaboratorProgress>(baseUrl, "syncCollaboratorAssessment", payload);
+      }
+
+      const response = await fetch(`${baseUrl}/api/collaborators/progress/assessments`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to sync collaborator assessment: ${response.status}`);
+      }
+
+      return (await response.json()) as CollaboratorProgress;
+    } catch {
+      // Keep progress tracking usable even if remote backend is unreachable.
+      return upsertLocalAssessment(payload);
     }
-
-    const response = await fetch(`${baseUrl}/api/collaborators/progress/assessments`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
-
-    if (!response.ok) {
-      throw new Error(`Failed to sync collaborator assessment: ${response.status}`);
-    }
-
-    return (await response.json()) as CollaboratorProgress;
   }
 
   return upsertLocalAssessment(payload);
@@ -610,25 +620,30 @@ export const syncCollaboratorAssessment = async (payload: SyncCollaboratorAssess
 export const getCollaboratorProgress = async (collaboratorEmail: string): Promise<CollaboratorProgress> => {
   const email = normalizeEmail(collaboratorEmail);
   const baseUrl = getApiBaseUrl();
+  const localMap = getLocalProgressMap();
+  const localRecord = normalizeProgressRecord(localMap[email]);
 
   if (baseUrl) {
-    if (isAppsScriptEndpoint(baseUrl)) {
-      const remote = await callAppsScriptGet<CollaboratorProgress>(baseUrl, "getCollaboratorProgress", { email });
-      return normalizeProgressRecord(remote) || createEmptyProgress(email);
-    }
+    try {
+      if (isAppsScriptEndpoint(baseUrl)) {
+        const remote = await callAppsScriptGet<CollaboratorProgress>(baseUrl, "getCollaboratorProgress", { email });
+        return normalizeProgressRecord(remote) || localRecord || createEmptyProgress(email);
+      }
 
-    const response = await fetch(`${baseUrl}/api/collaborators/progress/${encodeURIComponent(email)}`);
-    if (!response.ok) {
-      throw new Error(`Failed to fetch collaborator progress: ${response.status}`);
-    }
+      const response = await fetch(`${baseUrl}/api/collaborators/progress/${encodeURIComponent(email)}`);
+      if (!response.ok) {
+        throw new Error(`Failed to fetch collaborator progress: ${response.status}`);
+      }
 
-    const remote = (await response.json()) as CollaboratorProgress;
-    return normalizeProgressRecord(remote) || createEmptyProgress(email);
+      const remote = (await response.json()) as CollaboratorProgress;
+      return normalizeProgressRecord(remote) || localRecord || createEmptyProgress(email);
+    } catch {
+      return localRecord || createEmptyProgress(email);
+    }
   }
 
   // Fallback for environments without backend.
-  const map = getLocalProgressMap();
-  return map[email] || createEmptyProgress(email);
+  return localRecord || createEmptyProgress(email);
 };
 
 export const listCollaboratorsProgress = async (): Promise<CollaboratorProgress[]> => {
