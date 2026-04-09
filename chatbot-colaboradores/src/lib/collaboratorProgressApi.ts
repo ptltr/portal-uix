@@ -144,6 +144,7 @@ const sendReminderViaWebhookPayload = async (
     100,
     Math.max(0, Math.round((completedResourcesCount / Math.max(totalResourcesCount, 1)) * 100)),
   );
+  const progressWidth = `${completionPercentage}%`;
   const resumeUrl = buildReminderResumeUrl(collaboratorEmail, collaboratorName);
 
   const subject = "Recordatorio de seguimiento - Cursos pendientes";
@@ -202,8 +203,9 @@ const sendReminderViaWebhookPayload = async (
                     <p style="margin:0 0 10px 0;font-size:18px;font-weight:700;color:#0f172a;">${completedResourcesCount}/${totalResourcesCount} recursos (${completionPercentage}%)</p>
                     <table role="presentation" width="100%" cellspacing="0" cellpadding="0" bgcolor="#e4dff0" style="border-collapse:collapse;background-color:#e4dff0;border-radius:999px;overflow:hidden;">
                       <tr>
-                        <td width="${completionPercentage}%" bgcolor="#7b3fd9" style="background-color:#7b3fd9;height:10px;line-height:10px;font-size:0;">&nbsp;</td>
-                        <td style="height:10px;line-height:10px;font-size:0;">&nbsp;</td>
+                        <td style="padding:0;">
+                          <div style="height:10px;line-height:10px;font-size:0;background-color:#7b3fd9;width:${progressWidth};">&nbsp;</div>
+                        </td>
                       </tr>
                     </table>
                   </div>
