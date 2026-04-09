@@ -3,7 +3,7 @@ import { motion } from 'framer-motion';
 import { Link } from 'wouter';
 import { ArrowLeft, LockKeyhole, LogOut, Mail, TrendingUp, Users, ClipboardList } from 'lucide-react';
 import { getReminderBackendBaseUrl, isReminderBackendConfigured, listCollaboratorsProgress, sendProgressReminder, setReminderBackendBaseUrl, type CollaboratorProgress } from '@/lib/collaboratorProgressApi';
-import { authenticateCapitalHumano, clearCapitalHumanoAuth, isCapitalHumanoAuthenticated, isUsingDefaultCapitalHumanoCode } from '@/lib/capitalHumanoAuth';
+import { authenticateCapitalHumano, clearCapitalHumanoAuth, isCapitalHumanoAuthenticated } from '@/lib/capitalHumanoAuth';
 import { Progress } from '@/components/ui/progress';
 
 const statusMeta: Record<CollaboratorProgress['status'], { label: string; tone: string; chip: string }> = {
@@ -183,12 +183,6 @@ export default function CapitalHumano() {
               {authError ? (
                 <div className="rounded-xl border border-rose-400/25 bg-rose-400/10 px-3.5 py-2.5 text-sm text-rose-200">
                   {authError}
-                </div>
-              ) : null}
-
-              {isUsingDefaultCapitalHumanoCode() ? (
-                <div className="rounded-xl border border-amber-400/25 bg-amber-400/10 px-3.5 py-2.5 text-sm text-amber-100">
-                  Protección básica activa. Configura <span className="font-semibold">VITE_CAPITAL_HUMANO_ACCESS_CODE</span> para usar un código propio.
                 </div>
               ) : null}
 
