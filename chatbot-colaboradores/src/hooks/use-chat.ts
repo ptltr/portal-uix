@@ -464,6 +464,44 @@ const RESOURCE_BY_OPPORTUNITY: Record<string, ResourceData> = {
   },
 };
 
+const FALLBACK_RESOURCES: ResourceData[] = [
+  {
+    label: "Improving Communication Skills",
+    tipo: "Curso en Coursera · opción gratuita",
+    why: "Te ayuda a comunicarte con mayor claridad y seguridad en conversaciones clave.",
+    url: "https://www.coursera.org/learn/wharton-communication-skills",
+    category: "curso",
+  },
+  {
+    label: "Work Smarter, Not Harder: Time Management",
+    tipo: "Curso en Coursera · opción gratuita",
+    why: "Mejora tu capacidad de priorizar y gestionar mejor tu tiempo en semanas de alta demanda.",
+    url: "https://www.coursera.org/learn/work-smarter-not-harder",
+    category: "curso",
+  },
+  {
+    label: "How to speak so that people want to listen",
+    tipo: "Video en YouTube (TED) · gratis",
+    why: "Aporta técnicas simples para elevar la claridad de tu mensaje y tu escucha.",
+    url: "https://www.youtube.com/watch?v=eIho2S0ZahI",
+    category: "video",
+  },
+  {
+    label: "Fundamentals of Project Management",
+    tipo: "Alison · curso gratuito",
+    why: "Refuerza planificación, ejecución y seguimiento orientado a resultados.",
+    url: "https://alison.com/course/fundamentals-of-project-management-revised-2017",
+    category: "curso",
+  },
+  {
+    label: "Taller interno de Trabajo en Equipo",
+    tipo: "Taller UIX · gratuito",
+    why: "Fortalece colaboración transversal y coordinación entre roles dentro de UIX.",
+    url: "Disponible internamente en UIX. Acércate con Capital Humano para más información.",
+    category: "taller",
+  },
+];
+
 const randomFrom = (items: string[]): string => items[Math.floor(Math.random() * items.length)];
 
 const normalize = (value: string): string =>
@@ -543,13 +581,13 @@ const buildMixedResourceRecommendations = (opportunityKeys: string[], total = 5)
   const usedIds = new Set<string>();
   const allResources = Object.values(RESOURCE_BY_OPPORTUNITY);
 
-  const addResource = (resource?: ResourceData): boolean => {
+  const addResource = (resource?: ResourceData, options?: { relaxWorkshopLimit?: boolean }): boolean => {
     if (!resource) return false;
     const resourceId = toResourceId(resource);
     if (usedIds.has(resourceId)) return false;
 
     const workshopCount = selected.filter((item) => item.category === "taller").length;
-    if (resource.category === "taller" && workshopCount >= 2) return false;
+    if (resource.category === "taller" && workshopCount >= 2 && !options?.relaxWorkshopLimit) return false;
 
     selected.push(resource);
     usedIds.add(resourceId);
@@ -582,6 +620,18 @@ const buildMixedResourceRecommendations = (opportunityKeys: string[], total = 5)
   for (const item of allResources) {
     if (selected.length >= total) break;
     addResource(item);
+  }
+
+  // If category constraints prevented filling to 5, relax the workshop cap as final fallback.
+  for (const item of allResources) {
+    if (selected.length >= total) break;
+    addResource(item, { relaxWorkshopLimit: true });
+  }
+
+  // Last safety net: fixed fallback pool to always output 5 resources.
+  for (const item of FALLBACK_RESOURCES) {
+    if (selected.length >= total) break;
+    addResource(item, { relaxWorkshopLimit: true });
   }
 
   return selected.slice(0, total);

@@ -18,6 +18,59 @@ interface ParsedReport {
   recommendations: Recommendation[];
 }
 
+const PDF_FALLBACK_RECOMMENDATIONS: Recommendation[] = [
+  {
+    name: "Improving Communication Skills",
+    type: "Curso en Coursera · opción gratuita",
+    why: "Refuerza comunicación clara, escucha y conversaciones difíciles con enfoque práctico.",
+    url: "https://www.coursera.org/learn/wharton-communication-skills",
+  },
+  {
+    name: "Work Smarter, Not Harder: Time Management",
+    type: "Curso en Coursera · opción gratuita",
+    why: "Ayuda a priorizar mejor y sostener foco en semanas con alta carga de trabajo.",
+    url: "https://www.coursera.org/learn/work-smarter-not-harder",
+  },
+  {
+    name: "How to speak so that people want to listen",
+    type: "Video en YouTube (TED) · gratis",
+    why: "Aporta técnicas concretas para comunicarte mejor en contextos profesionales.",
+    url: "https://www.youtube.com/watch?v=eIho2S0ZahI",
+  },
+  {
+    name: "Fundamentals of Project Management",
+    type: "Alison · curso gratuito",
+    why: "Fortalece planificación y seguimiento orientado a resultados medibles.",
+    url: "https://alison.com/course/fundamentals-of-project-management-revised-2017",
+  },
+  {
+    name: "Taller interno de Trabajo en Equipo",
+    type: "Taller UIX · gratuito",
+    why: "Impulsa colaboración efectiva y coordinación entre perfiles de trabajo.",
+    url: "Disponible internamente en UIX. Acércate con Capital Humano para más información.",
+  },
+];
+
+function ensureFiveRecommendations(items: Recommendation[]): Recommendation[] {
+  const seen = new Set<string>();
+  const merged: Recommendation[] = [];
+
+  const add = (item: Recommendation) => {
+    const key = `${item.name}|${item.url}`.trim();
+    if (!item.name.trim() || seen.has(key)) return;
+    seen.add(key);
+    merged.push(item);
+  };
+
+  for (const item of items) add(item);
+  for (const item of PDF_FALLBACK_RECOMMENDATIONS) {
+    if (merged.length >= 5) break;
+    add(item);
+  }
+
+  return merged.slice(0, 5);
+}
+
 // jsPDF standard fonts don't support emoji — strip them out
 function stripEmoji(text: string): string {
   return text
@@ -66,7 +119,7 @@ function parseReport(content: string): ParsedReport {
   const recommendations: Recommendation[] = [];
   const recRegex = /\*\*\d+\.\s([^\n*]+)\*\*([\s\S]*?)(?=\*\*\d+\.|---(?!-))/g;
   let recMatch;
-  while ((recMatch = recRegex.exec(content)) !== null && recommendations.length < 3) {
+  while ((recMatch = recRegex.exec(content)) !== null && recommendations.length < 5) {
     const block = recMatch[0];
     const nameMatch = block.match(/\*\*\d+\.\s([^\n*]+)\*\*/);
     const typeMatch = block.match(/\*\*Tipo[^:]*:\*\*\s*([^\n]+)/i);
@@ -88,6 +141,7 @@ function parseReport(content: string): ParsedReport {
 export function generatePDF(content: string, profile: string, date: string) {
   const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
   const parsed = parseReport(content);
+  parsed.recommendations = ensureFiveRecommendations(parsed.recommendations);
 
   const W = 210;
   const margin = 18;
@@ -108,7 +162,7 @@ export function generatePDF(content: string, profile: string, date: string) {
   doc.setFont("helvetica", "normal");
   doc.setFontSize(8.5);
   doc.setTextColor(180, 160, 220);
-  doc.text("Asistente de Desarrollo Profesional", margin, 26);
+  doc.text("Asistente UiX", margin, 26);
 
   doc.setFont("helvetica", "bold");
   doc.setFontSize(11);
@@ -211,7 +265,7 @@ export function generatePDF(content: string, profile: string, date: string) {
   doc.setFont("helvetica", "bold");
   doc.setFontSize(12);
   doc.setTextColor(13, 2, 32);
-  doc.text("Tus 3 recursos de desarrollo", margin, y);
+  doc.text("Tus 5 recursos de desarrollo", margin, y);
   y += 5;
 
   doc.setFont("helvetica", "normal");
@@ -240,7 +294,7 @@ export function generatePDF(content: string, profile: string, date: string) {
       urlRaw.toLowerCase().includes("internamente") ||
       (!urlRaw.startsWith("http") && urlRaw !== "");
     const urlDisplay = isInternal
-      ? "Disponible internamente en UIX"
+      ? "Disponible internamente en UIX. Acércate con Capital Humano para más información."
       : urlRaw.length > 60
       ? urlRaw.slice(0, 57) + "..."
       : urlRaw;
