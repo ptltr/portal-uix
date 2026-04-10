@@ -846,6 +846,19 @@ export function useChat() {
     return candidates.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))[0] || null;
   }, [hasSnapshotContent, readSessionsArchive]);
 
+  const forceResumeLatestLocalSession = useCallback((): boolean => {
+    const latestLocal = readLatestLocalSnapshot();
+    if (!latestLocal) return false;
+
+    const resolvedEmail = String(latestLocal.employeeEmail || "").trim().toLowerCase();
+    applyPersistedState({
+      ...latestLocal,
+      employeeEmail: resolvedEmail,
+      updatedAt: Date.now(),
+    });
+    return true;
+  }, [applyPersistedState, readLatestLocalSnapshot]);
+
   const hasLocalSessionForEmail = useCallback((email: string): boolean => {
     const localSnapshot = readLocalSnapshotForEmail(email);
     return hasSnapshotContent(localSnapshot);
@@ -1509,5 +1522,6 @@ ${followUpEmailLine}
     finalReport,
     checkSessionForEmail,
     loadSessionForEmail,
+    forceResumeLatestLocalSession,
   };
 }
