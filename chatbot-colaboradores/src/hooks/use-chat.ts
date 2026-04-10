@@ -52,7 +52,6 @@ type PartialPersistedChatState = Partial<PersistedChatState> & {
 };
 
 const CHAT_STORAGE_KEY = "uix-chat-session-v1";
-const CHAT_SESSIONS_ARCHIVE_KEY = "uix-chat-sessions-by-email-v1";
 
 const migrateLegacyReportContent = (report: string): string => {
   if (!report) return report;
@@ -465,44 +464,6 @@ const RESOURCE_BY_OPPORTUNITY: Record<string, ResourceData> = {
   },
 };
 
-const FALLBACK_RESOURCES: ResourceData[] = [
-  {
-    label: "Improving Communication Skills",
-    tipo: "Curso en Coursera · opción gratuita",
-    why: "Te ayuda a comunicarte con mayor claridad y seguridad en conversaciones clave.",
-    url: "https://www.coursera.org/learn/wharton-communication-skills",
-    category: "curso",
-  },
-  {
-    label: "Work Smarter, Not Harder: Time Management",
-    tipo: "Curso en Coursera · opción gratuita",
-    why: "Mejora tu capacidad de priorizar y gestionar mejor tu tiempo en semanas de alta demanda.",
-    url: "https://www.coursera.org/learn/work-smarter-not-harder",
-    category: "curso",
-  },
-  {
-    label: "How to speak so that people want to listen",
-    tipo: "Video en YouTube (TED) · gratis",
-    why: "Aporta técnicas simples para elevar la claridad de tu mensaje y tu escucha.",
-    url: "https://www.youtube.com/watch?v=eIho2S0ZahI",
-    category: "video",
-  },
-  {
-    label: "Fundamentals of Project Management",
-    tipo: "Alison · curso gratuito",
-    why: "Refuerza planificación, ejecución y seguimiento orientado a resultados.",
-    url: "https://alison.com/course/fundamentals-of-project-management-revised-2017",
-    category: "curso",
-  },
-  {
-    label: "Taller interno de Trabajo en Equipo",
-    tipo: "Taller UIX · gratuito",
-    why: "Fortalece colaboración transversal y coordinación entre roles dentro de UIX.",
-    url: "Disponible internamente en UIX. Acércate con Capital Humano para más información.",
-    category: "taller",
-  },
-];
-
 const randomFrom = (items: string[]): string => items[Math.floor(Math.random() * items.length)];
 
 const normalize = (value: string): string =>
@@ -582,13 +543,13 @@ const buildMixedResourceRecommendations = (opportunityKeys: string[], total = 5)
   const usedIds = new Set<string>();
   const allResources = Object.values(RESOURCE_BY_OPPORTUNITY);
 
-  const addResource = (resource?: ResourceData, options?: { relaxWorkshopLimit?: boolean }): boolean => {
+  const addResource = (resource?: ResourceData): boolean => {
     if (!resource) return false;
     const resourceId = toResourceId(resource);
     if (usedIds.has(resourceId)) return false;
 
     const workshopCount = selected.filter((item) => item.category === "taller").length;
-    if (resource.category === "taller" && workshopCount >= 2 && !options?.relaxWorkshopLimit) return false;
+    if (resource.category === "taller" && workshopCount >= 2) return false;
 
     selected.push(resource);
     usedIds.add(resourceId);
@@ -623,18 +584,6 @@ const buildMixedResourceRecommendations = (opportunityKeys: string[], total = 5)
     addResource(item);
   }
 
-  // If category constraints prevented filling to 5, relax the workshop cap as final fallback.
-  for (const item of allResources) {
-    if (selected.length >= total) break;
-    addResource(item, { relaxWorkshopLimit: true });
-  }
-
-  // Last safety net: fixed fallback pool to always output 5 resources.
-  for (const item of FALLBACK_RESOURCES) {
-    if (selected.length >= total) break;
-    addResource(item, { relaxWorkshopLimit: true });
-  }
-
   return selected.slice(0, total);
 };
 
@@ -662,26 +611,15 @@ export function useChat() {
 
   const applyPersistedState = useCallback((parsed: PersistedChatState) => {
     const parsedMessages = Array.isArray(parsed.messages) ? parsed.messages : [];
-    const normalizedReport = migrateLegacyReportContent(parsed.finalReport || "");
-    const hasReport = Boolean(normalizedReport.trim());
-    const hasMeaningfulContent = parsedMessages.length > 0 || hasReport;
-    const hydratedMessages = parsedMessages.length
-      ? parsedMessages
-      : hasReport
-        ? [{
-            id: `assistant-restored-${Date.now()}`,
-            role: "assistant" as const,
-            content: "Recuperamos tu reporte guardado. Puedes continuar desde Ver avance para retomar tu seguimiento.",
-          }]
-        : [];
+    const hasMeaningfulContent = parsedMessages.length > 0 || Boolean(parsed.finalReport);
 
     setConversationId(hasMeaningfulContent && typeof parsed.conversationId === "number" ? parsed.conversationId : null);
-    setMessages(hydratedMessages);
-    setIsEvaluationComplete(hasMeaningfulContent && (Boolean(parsed.isEvaluationComplete) || hasReport));
+    setMessages(parsedMessages);
+    setIsEvaluationComplete(hasMeaningfulContent && Boolean(parsed.isEvaluationComplete));
     setEmployeeName(parsed.employeeName || "");
     setEmployeeEmail(parsed.employeeEmail || "");
     setCurrentStep(hasMeaningfulContent && typeof parsed.currentStep === "number" ? parsed.currentStep : 0);
-    setFinalReport(normalizedReport);
+    setFinalReport(migrateLegacyReportContent(parsed.finalReport || ""));
     setFollowUpCount(hasMeaningfulContent && typeof parsed.followUpCount === "number" ? parsed.followUpCount : 0);
     setIsInFollowUp(hasMeaningfulContent && Boolean(parsed.isInFollowUp));
 
@@ -716,198 +654,45 @@ export function useChat() {
 
     const parsedMessages = Array.isArray(snapshot.messages) ? snapshot.messages : [];
     const normalizedReport = snapshot.finalReport || "";
-    const hasUserMessages = parsedMessages.some((msg) => msg?.role === "user" && String(msg.content || "").trim().length > 0);
 
     return (
-      hasUserMessages
+      parsedMessages.length > 0
       || Boolean(normalizedReport)
     );
   }, []);
 
-  const getSnapshotResumeRank = useCallback((snapshot: PersistedChatState | null | undefined) => {
-    if (!snapshot) {
-      return { userMessagesCount: -1, hasReport: 0, updatedAt: 0 };
-    }
-
-    const userMessagesCount = Array.isArray(snapshot.messages)
-      ? snapshot.messages.filter((msg) => msg?.role === "user" && String(msg.content || "").trim().length > 0).length
-      : 0;
-
-    return {
-      userMessagesCount,
-      hasReport: snapshot.finalReport ? 1 : 0,
-      updatedAt: typeof snapshot.updatedAt === "number" ? snapshot.updatedAt : 0,
-    };
-  }, []);
-
-  const pickPreferredSnapshot = useCallback(
-    (first: PersistedChatState | null, second: PersistedChatState | null): PersistedChatState | null => {
-      const a = getSnapshotResumeRank(first);
-      const b = getSnapshotResumeRank(second);
-
-      if (a.userMessagesCount !== b.userMessagesCount) {
-        return a.userMessagesCount > b.userMessagesCount ? first : second;
-      }
-
-      if (a.hasReport !== b.hasReport) {
-        return a.hasReport > b.hasReport ? first : second;
-      }
-
-      if (a.updatedAt !== b.updatedAt) {
-        return a.updatedAt >= b.updatedAt ? first : second;
-      }
-
-      return first || second;
-    },
-    [getSnapshotResumeRank],
-  );
-
-  const readSessionsArchive = useCallback((): Record<string, PersistedChatState> => {
-    try {
-      const raw = localStorage.getItem(CHAT_SESSIONS_ARCHIVE_KEY);
-      if (!raw) return {};
-
-      const parsed = JSON.parse(raw) as Record<string, PartialPersistedChatState>;
-      const archive: Record<string, PersistedChatState> = {};
-
-      for (const [emailKey, snapshot] of Object.entries(parsed || {})) {
-        const email = String(emailKey || "").trim().toLowerCase();
-        if (!email) continue;
-
-        const normalized: PersistedChatState = {
-          conversationId: typeof snapshot?.conversationId === "number" ? snapshot.conversationId : null,
-          messages: Array.isArray(snapshot?.messages) ? snapshot.messages : [],
-          isEvaluationComplete: Boolean(snapshot?.isEvaluationComplete),
-          employeeName: String(snapshot?.employeeName || ""),
-          employeeEmail: email,
-          currentStep: typeof snapshot?.currentStep === "number" ? snapshot.currentStep : 0,
-          finalReport: String(snapshot?.finalReport || snapshot?.report || ""),
-          followUpCount: typeof snapshot?.followUpCount === "number" ? snapshot.followUpCount : 0,
-          isInFollowUp: Boolean(snapshot?.isInFollowUp),
-          signals: snapshot?.signals?.strengths && snapshot?.signals?.opportunities
-            ? snapshot.signals
-            : { strengths: {}, opportunities: {} },
-          updatedAt: typeof snapshot?.updatedAt === "number" ? snapshot.updatedAt : Date.now(),
-        };
-
-        archive[email] = normalized;
-      }
-
-      return archive;
-    } catch {
-      return {};
-    }
-  }, []);
-
-  const writeSessionsArchive = useCallback((archive: Record<string, PersistedChatState>) => {
-    try {
-      localStorage.setItem(CHAT_SESSIONS_ARCHIVE_KEY, JSON.stringify(archive));
-    } catch {
-      // Ignore storage write errors (quota/private mode).
-    }
-  }, []);
-
-  const upsertArchiveSnapshot = useCallback((snapshot: PersistedChatState) => {
-    const email = String(snapshot.employeeEmail || "").trim().toLowerCase();
-    if (!email) return;
-    if (!hasSnapshotContent(snapshot)) return;
-
-    const archive = readSessionsArchive();
-    const current = archive[email];
-    if (!current || (snapshot.updatedAt || 0) >= (current.updatedAt || 0)) {
-      archive[email] = {
-        ...snapshot,
-        employeeEmail: email,
-      };
-      writeSessionsArchive(archive);
-    }
-  }, [hasSnapshotContent, readSessionsArchive, writeSessionsArchive]);
-
   const readLocalSnapshotForEmail = useCallback((email: string): PersistedChatState | null => {
-    const normalizedEmail = email.trim().toLowerCase();
-
     try {
       const raw = localStorage.getItem(CHAT_STORAGE_KEY);
-      if (raw) {
-        const parsed = JSON.parse(raw) as PartialPersistedChatState;
-        const storedEmail = String(parsed.employeeEmail || "").trim().toLowerCase();
-        if (storedEmail === normalizedEmail) {
-          const normalized: PersistedChatState = {
-            conversationId: typeof parsed.conversationId === "number" ? parsed.conversationId : null,
-            messages: Array.isArray(parsed.messages) ? parsed.messages : [],
-            isEvaluationComplete: Boolean(parsed.isEvaluationComplete),
-            employeeName: String(parsed.employeeName || ""),
-            employeeEmail: storedEmail,
-            currentStep: typeof parsed.currentStep === "number" ? parsed.currentStep : 0,
-            finalReport: String(parsed.finalReport || parsed.report || ""),
-            followUpCount: typeof parsed.followUpCount === "number" ? parsed.followUpCount : 0,
-            isInFollowUp: Boolean(parsed.isInFollowUp),
-            signals: parsed.signals?.strengths && parsed.signals?.opportunities
-              ? parsed.signals
-              : { strengths: {}, opportunities: {} },
-            updatedAt: typeof parsed.updatedAt === "number" ? parsed.updatedAt : Date.now(),
-          };
+      if (!raw) return null;
 
-          return normalized;
-        }
+      const parsed = JSON.parse(raw) as PartialPersistedChatState;
+      const storedEmail = String(parsed.employeeEmail || "").trim().toLowerCase();
+      if (storedEmail !== email.trim().toLowerCase()) {
+        return null;
       }
 
-      const archive = readSessionsArchive();
-      return archive[normalizedEmail] || null;
+      const normalized: PersistedChatState = {
+        conversationId: typeof parsed.conversationId === "number" ? parsed.conversationId : null,
+        messages: Array.isArray(parsed.messages) ? parsed.messages : [],
+        isEvaluationComplete: Boolean(parsed.isEvaluationComplete),
+        employeeName: String(parsed.employeeName || ""),
+        employeeEmail: storedEmail,
+        currentStep: typeof parsed.currentStep === "number" ? parsed.currentStep : 0,
+        finalReport: String(parsed.finalReport || parsed.report || ""),
+        followUpCount: typeof parsed.followUpCount === "number" ? parsed.followUpCount : 0,
+        isInFollowUp: Boolean(parsed.isInFollowUp),
+        signals: parsed.signals?.strengths && parsed.signals?.opportunities
+          ? parsed.signals
+          : { strengths: {}, opportunities: {} },
+        updatedAt: typeof parsed.updatedAt === "number" ? parsed.updatedAt : Date.now(),
+      };
+
+      return normalized;
     } catch {
-      const archive = readSessionsArchive();
-      return archive[normalizedEmail] || null;
+      return null;
     }
-  }, [readSessionsArchive]);
-
-  const readLatestLocalSnapshot = useCallback((): PersistedChatState | null => {
-    try {
-      const raw = localStorage.getItem(CHAT_STORAGE_KEY);
-      if (raw) {
-        const parsed = JSON.parse(raw) as PartialPersistedChatState;
-        const normalized: PersistedChatState = {
-          conversationId: typeof parsed.conversationId === "number" ? parsed.conversationId : null,
-          messages: Array.isArray(parsed.messages) ? parsed.messages : [],
-          isEvaluationComplete: Boolean(parsed.isEvaluationComplete),
-          employeeName: String(parsed.employeeName || ""),
-          employeeEmail: String(parsed.employeeEmail || "").trim().toLowerCase(),
-          currentStep: typeof parsed.currentStep === "number" ? parsed.currentStep : 0,
-          finalReport: String(parsed.finalReport || parsed.report || ""),
-          followUpCount: typeof parsed.followUpCount === "number" ? parsed.followUpCount : 0,
-          isInFollowUp: Boolean(parsed.isInFollowUp),
-          signals: parsed.signals?.strengths && parsed.signals?.opportunities
-            ? parsed.signals
-            : { strengths: {}, opportunities: {} },
-          updatedAt: typeof parsed.updatedAt === "number" ? parsed.updatedAt : Date.now(),
-        };
-
-        if (hasSnapshotContent(normalized)) {
-          return normalized;
-        }
-      }
-    } catch {
-      // Ignore malformed active session snapshot.
-    }
-
-    const archive = readSessionsArchive();
-    const candidates = Object.values(archive).filter((snapshot) => hasSnapshotContent(snapshot));
-    if (!candidates.length) return null;
-
-    return candidates.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))[0] || null;
-  }, [hasSnapshotContent, readSessionsArchive]);
-
-  const forceResumeLatestLocalSession = useCallback((): boolean => {
-    const latestLocal = readLatestLocalSnapshot();
-    if (!latestLocal) return false;
-
-    const resolvedEmail = String(latestLocal.employeeEmail || "").trim().toLowerCase();
-    applyPersistedState({
-      ...latestLocal,
-      employeeEmail: resolvedEmail,
-      updatedAt: Date.now(),
-    });
-    return true;
-  }, [applyPersistedState, readLatestLocalSnapshot]);
+  }, []);
 
   const hasLocalSessionForEmail = useCallback((email: string): boolean => {
     const localSnapshot = readLocalSnapshotForEmail(email);
@@ -941,9 +726,7 @@ export function useChat() {
     } catch {
       // Ignore storage write errors (quota/private mode).
     }
-
-    upsertArchiveSnapshot(snapshot);
-  }, [getPersistedSnapshot, isTyping, upsertArchiveSnapshot]);
+  }, [getPersistedSnapshot, isTyping]);
 
   useEffect(() => {
     if (!hasHydratedRef.current || isTyping || !employeeEmail.trim()) return;
@@ -1480,9 +1263,6 @@ ${followUpEmailLine}
   }, [buildPersonalizedReport, currentStep, employeeName, generateContextualResponse]);
 
   const resetChat = useCallback(() => {
-    const snapshotBeforeReset = getPersistedSnapshot();
-    upsertArchiveSnapshot(snapshotBeforeReset);
-
     setConversationId(null);
     setMessages([]);
     setIsEvaluationComplete(false);
@@ -1499,17 +1279,14 @@ ${followUpEmailLine}
     } catch {
       // Ignore storage cleanup errors.
     }
-  }, [getPersistedSnapshot, upsertArchiveSnapshot]);
+  }, []);
 
   const checkSessionForEmail = useCallback(async (email: string): Promise<boolean> => {
     const hasLocal = hasLocalSessionForEmail(email);
     if (hasLocal) return true;
 
-    const latestLocal = readLatestLocalSnapshot();
-    if (latestLocal) return true;
-
     return hasSessionByEmail(email);
-  }, [hasLocalSessionForEmail, readLatestLocalSnapshot]);
+  }, [hasLocalSessionForEmail]);
 
   const loadSessionForEmail = useCallback(async (email: string): Promise<boolean> => {
     const normalizedEmail = email.trim().toLowerCase();
@@ -1522,14 +1299,11 @@ ${followUpEmailLine}
     const validRemote = remoteSession && hasSnapshotContent(remoteSession) ? remoteSession : null;
     const validLocal = localSession && hasSnapshotContent(localSession) ? localSession : null;
 
-    const selected = pickPreferredSnapshot(validRemote, validLocal);
+    const remoteUpdatedAt = validRemote?.updatedAt || 0;
+    const localUpdatedAt = validLocal?.updatedAt || 0;
+    const selected = (validRemote && remoteUpdatedAt >= localUpdatedAt) ? validRemote : validLocal;
 
     if (selected) {
-      try {
-        localStorage.setItem(CHAT_STORAGE_KEY, JSON.stringify(selected));
-      } catch {
-        // Ignore storage write errors (quota/private mode).
-      }
       applyPersistedState({
         ...selected,
         employeeEmail: normalizedEmail,
@@ -1539,21 +1313,8 @@ ${followUpEmailLine}
       return true;
     }
 
-    // Compatibility fallback: if exact email history is unavailable,
-    // restore latest local conversation to avoid blocking resume flows.
-    const latestLocal = readLatestLocalSnapshot();
-    if (latestLocal) {
-      applyPersistedState({
-        ...latestLocal,
-        employeeEmail: latestLocal.employeeEmail || normalizedEmail,
-        employeeName: latestLocal.employeeName || employeeName,
-        updatedAt: Date.now(),
-      });
-      return true;
-    }
-
     return false;
-  }, [applyPersistedState, employeeName, hasSnapshotContent, pickPreferredSnapshot, readLocalSnapshotForEmail, readLatestLocalSnapshot]);
+  }, [applyPersistedState, employeeName, hasSnapshotContent, readLocalSnapshotForEmail]);
 
   return {
     conversationId,
@@ -1570,6 +1331,5 @@ ${followUpEmailLine}
     finalReport,
     checkSessionForEmail,
     loadSessionForEmail,
-    forceResumeLatestLocalSession,
   };
 }

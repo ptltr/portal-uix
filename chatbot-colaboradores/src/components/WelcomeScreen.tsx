@@ -118,8 +118,7 @@ export function WelcomeScreen({
     && resumeFromReminderLink
     && Boolean(normalizeEmail(initialUserEmail))
     && normalizeEmail(initialUserEmail) === normalizeEmail(userEmail);
-  const hasAnyResumeCandidate = hasSavedSessionForEmail || hasRemoteSessionForEmail || hasSavedSession;
-  const canAttemptResume = isValidEmail(userEmail);
+  const hasAnyResumeCandidate = hasSavedSessionForEmail || hasRemoteSessionForEmail;
   const showResumeOptionsInProfile = isValidEmail(userEmail);
 
   useEffect(() => {
@@ -203,7 +202,7 @@ export function WelcomeScreen({
     setResumeError('');
     const result = await onResumeSession?.(payload);
     if (result === false) {
-      setResumeError('No encontramos historial recuperable para este correo en este momento.');
+      setResumeError('No pudimos cargar el historial para este correo. Verifica que uses el mismo correo del registro.');
     }
   };
 
@@ -348,9 +347,7 @@ export function WelcomeScreen({
                         ? 'Detectamos una conversación guardada para este correo.'
                         : hasRemoteSessionForEmail
                           ? 'Detectamos una conversación guardada para este correo en el servidor.'
-                          : hasSavedSession
-                            ? 'Detectamos una conversación guardada en este navegador.'
-                            : 'Detectamos una conversación guardada para este correo.'
+                          : 'Detectamos una conversación guardada para este correo.'
                       : hasReminderResumeCandidate
                         ? 'Llegaste desde un recordatorio. Ingresa el mismo correo para buscar tu historial guardado.'
                         : 'Puedes retomar si ya existe historial para este correo.'}
@@ -358,30 +355,23 @@ export function WelcomeScreen({
                   <div className="grid gap-2 sm:grid-cols-2">
                     <button
                       onClick={() => {
-                        if (!canAttemptResume) return;
+                        if (!hasAnyResumeCandidate) return;
                         void handleResume({
                           userName: userName.trim(),
                           userEmail: userEmail.trim(),
                           profile: selectedProfile || 'UX/UI Designer',
                           source: hasRemoteSessionForEmail
                               ? 'remote'
-                              : hasSavedSession && !hasSavedSessionForEmail
-                                ? 'reminder'
                               : 'local',
                         });
                       }}
-                      disabled={!canAttemptResume}
+                      disabled={!hasAnyResumeCandidate}
                       className="w-full rounded-xl py-2.5 text-sm font-semibold text-foreground glass-card border border-white/12 hover:border-primary/40 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                     >
-                      {hasAnyResumeCandidate ? 'Retomar conversación' : 'Intentar retomar conversación'}
+                      Retomar conversación
                     </button>
                     <button
-                      onClick={() => {
-                        handleStartFresh('profile', false);
-                        if (resumeFromReminderLink && typeof window !== 'undefined') {
-                          window.location.assign(import.meta.env.BASE_URL || '/');
-                        }
-                      }}
+                      onClick={() => handleStartFresh('profile', false)}
                       className="w-full rounded-xl py-2.5 text-sm font-semibold text-white btn-brand"
                     >
                       Empezar nueva

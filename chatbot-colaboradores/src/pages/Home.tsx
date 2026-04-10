@@ -72,7 +72,6 @@ export default function Home() {
     finalReport,
     checkSessionForEmail,
     loadSessionForEmail,
-    forceResumeLatestLocalSession,
   } = useChat();
 
   const hasSavedSession = messages.length > 0 || Boolean(finalReport);
@@ -108,10 +107,10 @@ export default function Home() {
   }, [phase, selectedProfile, selectedLevel]);
 
   useEffect(() => {
-    if (phase !== 'welcome' && !conversationId && messages.length === 0 && !finalReport) {
+    if (phase !== 'welcome' && !conversationId && messages.length === 0) {
       setPhase('welcome');
     }
-  }, [phase, conversationId, messages.length, finalReport]);
+  }, [phase, conversationId, messages.length]);
 
   const handleStart = (id: number, profile: string, level: string, userName: string, userEmail: string) => {
     setConversationId(id);
@@ -151,19 +150,6 @@ export default function Home() {
       }
 
       if (!restored) {
-        const forceResumed = forceResumeLatestLocalSession();
-        if (forceResumed) {
-          setPhase('chat');
-          return true;
-        }
-
-        const hasExistingContent = messages.length > 0 || Boolean(finalReport);
-        if (hasExistingContent) {
-          setPhase('chat');
-          return true;
-        }
-
-        // Avoid opening an empty chat when no history was actually restored.
         return false;
       }
 
