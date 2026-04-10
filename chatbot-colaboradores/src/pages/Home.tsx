@@ -165,6 +165,9 @@ export default function Home() {
 
         // Do not block the user in welcome state when resume lookup fails.
         // Keep previous UX behavior: continue to chat and allow progress from there.
+        if (!conversationId) {
+          setConversationId(Date.now());
+        }
         setPhase('chat');
         return true;
       }

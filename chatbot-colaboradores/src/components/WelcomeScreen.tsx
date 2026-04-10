@@ -119,7 +119,7 @@ export function WelcomeScreen({
     && Boolean(normalizeEmail(initialUserEmail))
     && normalizeEmail(initialUserEmail) === normalizeEmail(userEmail);
   const hasAnyResumeCandidate = hasSavedSessionForEmail || hasRemoteSessionForEmail || hasSavedSession;
-  const canAttemptResume = isValidEmail(userEmail) && !isCheckingRemoteSession;
+  const canAttemptResume = isValidEmail(userEmail);
   const showResumeOptionsInProfile = isValidEmail(userEmail);
 
   useEffect(() => {
