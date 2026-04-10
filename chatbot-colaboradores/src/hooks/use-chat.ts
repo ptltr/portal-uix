@@ -613,8 +613,7 @@ export function useChat() {
     const parsedMessages = Array.isArray(parsed.messages) ? parsed.messages : [];
     const normalizedReport = migrateLegacyReportContent(parsed.finalReport || "");
     const hasReport = Boolean(normalizedReport.trim());
-    const hasUserMessages = parsedMessages.some((msg) => msg?.role === "user" && String(msg.content || "").trim().length > 0);
-    const hasMeaningfulContent = hasUserMessages || hasReport;
+    const hasMeaningfulContent = parsedMessages.length > 0 || hasReport;
     const hydratedMessages = parsedMessages.length
       ? parsedMessages
       : hasReport
@@ -666,10 +665,9 @@ export function useChat() {
 
     const parsedMessages = Array.isArray(snapshot.messages) ? snapshot.messages : [];
     const normalizedReport = snapshot.finalReport || "";
-    const hasUserMessages = parsedMessages.some((msg) => msg?.role === "user" && String(msg.content || "").trim().length > 0);
 
     return (
-      hasUserMessages
+      parsedMessages.length > 0
       || Boolean(normalizedReport)
     );
   }, []);

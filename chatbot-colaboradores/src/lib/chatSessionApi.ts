@@ -70,10 +70,7 @@ const isValidEmail = (value: string): boolean => /\S+@\S+\.\S+/.test(value.trim(
 
 const sessionHasMeaningfulContent = (snapshot: PersistedChatState): boolean => {
   // Only treat persisted history as resumable when it has actual conversation content.
-  const hasUserMessages = (snapshot.messages || []).some(
-    (msg) => msg?.role === "user" && String(msg.content || "").trim().length > 0,
-  );
-  return hasUserMessages || Boolean(snapshot.finalReport);
+  return (snapshot.messages || []).length > 0 || Boolean(snapshot.finalReport);
 };
 
 const parseSessionSnapshot = (value: unknown): PersistedChatState | null => {
