@@ -662,15 +662,26 @@ export function useChat() {
 
   const applyPersistedState = useCallback((parsed: PersistedChatState) => {
     const parsedMessages = Array.isArray(parsed.messages) ? parsed.messages : [];
-    const hasMeaningfulContent = parsedMessages.length > 0 || Boolean(parsed.finalReport);
+    const normalizedReport = migrateLegacyReportContent(parsed.finalReport || "");
+    const hasReport = Boolean(normalizedReport.trim());
+    const hasMeaningfulContent = parsedMessages.length > 0 || hasReport;
+    const hydratedMessages = parsedMessages.length
+      ? parsedMessages
+      : hasReport
+        ? [{
+            id: `assistant-restored-${Date.now()}`,
+            role: "assistant" as const,
+            content: "Recuperamos tu reporte guardado. Puedes continuar desde Ver avance para retomar tu seguimiento.",
+          }]
+        : [];
 
     setConversationId(hasMeaningfulContent && typeof parsed.conversationId === "number" ? parsed.conversationId : null);
-    setMessages(parsedMessages);
-    setIsEvaluationComplete(hasMeaningfulContent && Boolean(parsed.isEvaluationComplete));
+    setMessages(hydratedMessages);
+    setIsEvaluationComplete(hasMeaningfulContent && (Boolean(parsed.isEvaluationComplete) || hasReport));
     setEmployeeName(parsed.employeeName || "");
     setEmployeeEmail(parsed.employeeEmail || "");
     setCurrentStep(hasMeaningfulContent && typeof parsed.currentStep === "number" ? parsed.currentStep : 0);
-    setFinalReport(migrateLegacyReportContent(parsed.finalReport || ""));
+    setFinalReport(normalizedReport);
     setFollowUpCount(hasMeaningfulContent && typeof parsed.followUpCount === "number" ? parsed.followUpCount : 0);
     setIsInFollowUp(hasMeaningfulContent && Boolean(parsed.isInFollowUp));
 
