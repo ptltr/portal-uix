@@ -171,6 +171,22 @@ export function ResultsScreen({ messages, onRestart, onBackToChat, profile, empl
   );
 
   const recommendedResources = useMemo(() => parseRecommendedResourceTitles(content), [content]);
+  const derivedProgress = useMemo(() => {
+    const deliverables = progress?.deliverables || [];
+    const maxCompletedFromDeliverables = deliverables.reduce((max, deliverable) => {
+      const completed = deliverable.completedResources?.length || 0;
+      return Math.max(max, completed);
+    }, 0);
+
+    const total = Math.max(progress?.totalResourcesCount || 0, recommendedResources.length || 0, 1);
+    const completed = Math.min(
+      total,
+      Math.max(progress?.completedResourcesCount || 0, maxCompletedFromDeliverables),
+    );
+    const percentage = Math.min(100, Math.round((completed / total) * 100));
+
+    return { completed, total, percentage };
+  }, [progress, recommendedResources]);
 
   useEffect(() => {
     let isMounted = true;
@@ -266,7 +282,11 @@ export function ResultsScreen({ messages, onRestart, onBackToChat, profile, empl
     && deliverableTitle.trim()
     && (deliverableSummary.trim() || templateResponses.some((item) => item.trim()))
   );
-  const currentStatus = progress ? statusMeta[progress.status] : statusMeta['at-risk'];
+  const currentStatus = derivedProgress.percentage >= 100
+    ? statusMeta.completed
+    : derivedProgress.percentage > 0
+      ? statusMeta['on-track']
+      : statusMeta['at-risk'];
 
   return (
     <motion.div
@@ -409,7 +429,7 @@ export function ResultsScreen({ messages, onRestart, onBackToChat, profile, empl
               <div className="rounded-2xl border border-white/8 bg-white/5 p-4">
                 <p className="text-xs text-muted-foreground">Recursos completados</p>
                 <p className="mt-2 text-2xl font-display font-semibold text-foreground">
-                  {progress?.completedResourcesCount ?? 0}/{progress?.totalResourcesCount ?? 5}
+                  {derivedProgress.completed}/{derivedProgress.total}
                 </p>
               </div>
               <div className="rounded-2xl border border-white/8 bg-white/5 p-4">
@@ -424,9 +444,9 @@ export function ResultsScreen({ messages, onRestart, onBackToChat, profile, empl
             <div>
               <div className="mb-2 flex items-center justify-between text-sm">
                 <span className="text-muted-foreground">Progreso general</span>
-                <span className="font-semibold text-foreground">{progress?.completionPercentage ?? 0}%</span>
+                <span className="font-semibold text-foreground">{derivedProgress.percentage}%</span>
               </div>
-              <Progress value={progress?.completionPercentage ?? 0} className="h-3 bg-white/10" />
+              <Progress value={derivedProgress.percentage} className="h-3 bg-white/10" />
             </div>
 
             <div className="space-y-3">
