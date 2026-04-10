@@ -694,6 +694,16 @@ export function useChat() {
     );
   }, []);
 
+  const isResumeUsableSnapshot = useCallback((snapshot: PersistedChatState | null | undefined): boolean => {
+    if (!snapshot) return false;
+
+    const parsedMessages = Array.isArray(snapshot.messages) ? snapshot.messages : [];
+    const hasUserMessages = parsedMessages.some((msg) => msg?.role === "user" && String(msg.content || "").trim().length > 0);
+    const hasReport = Boolean(String(snapshot.finalReport || "").trim());
+
+    return hasUserMessages || hasReport;
+  }, []);
+
   const getSnapshotResumeRank = useCallback((snapshot: PersistedChatState | null | undefined) => {
     if (!snapshot) {
       return { userMessagesCount: -1, hasReport: 0, updatedAt: 0 };
@@ -767,8 +777,8 @@ export function useChat() {
 
   const hasLocalSessionForEmail = useCallback((email: string): boolean => {
     const localSnapshot = readLocalSnapshotForEmail(email);
-    return hasSnapshotContent(localSnapshot);
-  }, [hasSnapshotContent, readLocalSnapshotForEmail]);
+    return isResumeUsableSnapshot(localSnapshot);
+  }, [isResumeUsableSnapshot, readLocalSnapshotForEmail]);
 
   const readLatestLocalSnapshot = useCallback((): PersistedChatState | null => {
     try {
@@ -792,11 +802,11 @@ export function useChat() {
         updatedAt: typeof parsed.updatedAt === "number" ? parsed.updatedAt : Date.now(),
       };
 
-      return hasSnapshotContent(normalized) ? normalized : null;
+      return isResumeUsableSnapshot(normalized) ? normalized : null;
     } catch {
       return null;
     }
-  }, [hasSnapshotContent]);
+  }, [isResumeUsableSnapshot]);
 
   const forceResumeLatestLocalSession = useCallback((): boolean => {
     const snapshot = readLatestLocalSnapshot();
@@ -1411,7 +1421,7 @@ ${followUpEmailLine}
 
     const selected = pickPreferredSnapshot(validRemote, validLocal);
 
-    if (selected) {
+    if (selected && isResumeUsableSnapshot(selected)) {
       applyPersistedState({
         ...selected,
         employeeEmail: normalizedEmail,
@@ -1422,7 +1432,7 @@ ${followUpEmailLine}
     }
 
     return false;
-  }, [applyPersistedState, employeeName, hasSnapshotContent, pickPreferredSnapshot, readLocalSnapshotForEmail]);
+  }, [applyPersistedState, employeeName, hasSnapshotContent, isResumeUsableSnapshot, pickPreferredSnapshot, readLocalSnapshotForEmail]);
 
   const recoverSessionFromProgress = useCallback(async (email: string, fallbackName?: string): Promise<boolean> => {
     const normalizedEmail = email.trim().toLowerCase();
