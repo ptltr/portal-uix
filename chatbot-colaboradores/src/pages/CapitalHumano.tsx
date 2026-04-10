@@ -483,11 +483,13 @@ export default function CapitalHumano() {
                         </div>
                         {latestDeliverable ? (
                           <div className="mt-3 space-y-2">
-                            <p className="text-sm font-medium text-foreground">{latestDeliverable.title}</p>
+                            <div className="flex flex-wrap items-center gap-2">
+                              <p className="text-sm font-medium text-foreground">{latestDeliverable.title}</p>
+                              <span className="rounded-full border border-white/10 px-2.5 py-1 text-xs text-foreground/85 bg-white/5">
+                                Curso: {latestDeliverableCourseName || 'No identificado'}
+                              </span>
+                            </div>
                             <p className="text-sm text-muted-foreground whitespace-pre-wrap">{latestDeliverable.summary}</p>
-                            <p className="text-xs text-muted-foreground">
-                              Curso: {latestDeliverableCourseName || 'No identificado'}
-                            </p>
                             <div className="mt-3 pt-2 border-t border-white/10">
                               <p className="text-sm font-medium text-foreground">Fecha de actualización: {latestDeliverableUpdatedAtLabel}</p>
                             </div>

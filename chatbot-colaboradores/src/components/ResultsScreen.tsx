@@ -119,6 +119,38 @@ const deliverableTypeLabels: Record<DeliverableType, string> = {
   'custom': 'Formato libre'
 };
 
+const normalizePromptText = (value: string): string => {
+  return value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .trim();
+};
+
+const getVisibleDeliverableSummary = (deliverable: CollaboratorProgress['deliverables'][number]): string => {
+  const summary = (deliverable.summary || '').trim();
+  if (!summary) return '';
+  if (!deliverable.templateResponses?.length) return summary;
+
+  const promptPrefixes = deliverable.templateResponses
+    .map((item) => normalizePromptText(item.prompt || ''))
+    .filter(Boolean);
+
+  if (!promptPrefixes.length) return summary;
+
+  const filteredLines = summary
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .filter((line) => {
+      const normalizedLine = normalizePromptText(line.replace(/^[-*]\s*/, ''));
+      return !promptPrefixes.some((prompt) => normalizedLine.startsWith(prompt));
+    });
+
+  return filteredLines.join('\n').trim();
+};
+
 export function ResultsScreen({ messages, onRestart, onBackToChat, profile, employeeName, employeeEmail, finalReport, assessmentId }: ResultsScreenProps) {
   const rawContent = normalizeReportContent(finalReport || extractReportContent(messages));
   const [isGenerating, setIsGenerating] = useState(false);
@@ -197,13 +229,7 @@ export function ResultsScreen({ messages, onRestart, onBackToChat, profile, empl
         .map((response, index) => ({ prompt: prompts[index], response: response.trim() }))
         .filter((item) => item.response.length > 0);
 
-      const templateAsSummary = normalizedTemplateResponses
-        .map((item) => `- ${item.prompt} ${item.response}`)
-        .join('\n');
-
-      const composedSummary = [deliverableSummary.trim(), templateAsSummary]
-        .filter(Boolean)
-        .join('\n\n');
+      const composedSummary = deliverableSummary.trim();
 
       await uploadDeliverable({
         collaboratorEmail: employeeEmail,
@@ -408,6 +434,10 @@ export function ResultsScreen({ messages, onRestart, onBackToChat, profile, empl
                 <div className="space-y-3">
                   {progress.deliverables.slice().reverse().map((deliverable) => (
                     <div key={deliverable.id} className="rounded-2xl border border-white/8 bg-white/5 p-4 space-y-2">
+                      {(() => {
+                        const visibleSummary = getVisibleDeliverableSummary(deliverable);
+                        return (
+                          <>
                       <div className="flex items-center justify-between gap-4">
                         <div className="space-y-1">
                           <p className="font-medium text-foreground">{deliverable.title}</p>
@@ -419,7 +449,9 @@ export function ResultsScreen({ messages, onRestart, onBackToChat, profile, empl
                         </div>
                         <span className="text-xs text-muted-foreground">{new Date(deliverable.submittedAt).toLocaleDateString('es-MX')}</span>
                       </div>
-                      <p className="text-sm text-muted-foreground whitespace-pre-wrap">{deliverable.summary}</p>
+                      {visibleSummary ? (
+                        <p className="text-sm text-muted-foreground whitespace-pre-wrap">{visibleSummary}</p>
+                      ) : null}
                       {deliverable.templateResponses?.length ? (
                         <div className="space-y-1 text-xs text-muted-foreground">
                           {deliverable.templateResponses.map((item, idx) => (
@@ -438,6 +470,9 @@ export function ResultsScreen({ messages, onRestart, onBackToChat, profile, empl
                           ))}
                         </div>
                       ) : null}
+                          </>
+                        );
+                      })()}
                     </div>
                   ))}
                 </div>
