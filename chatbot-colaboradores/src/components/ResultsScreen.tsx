@@ -124,6 +124,7 @@ const normalizePromptText = (value: string): string => {
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
     .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
 };
@@ -144,8 +145,8 @@ const getVisibleDeliverableSummary = (deliverable: CollaboratorProgress['deliver
     .map((line) => line.trim())
     .filter(Boolean)
     .filter((line) => {
-      const normalizedLine = normalizePromptText(line.replace(/^[-*]\s*/, ''));
-      return !promptPrefixes.some((prompt) => normalizedLine.startsWith(prompt));
+      const normalizedLine = normalizePromptText(line.replace(/^[-*•]\s*/, ''));
+      return !promptPrefixes.some((prompt) => normalizedLine.includes(prompt));
     });
 
   return filteredLines.join('\n').trim();
