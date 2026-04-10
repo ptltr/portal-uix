@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from "react";
-import { syncCollaboratorAssessment } from "@/lib/collaboratorProgressApi";
+import { getCollaboratorProgress, syncCollaboratorAssessment } from "@/lib/collaboratorProgressApi";
 import { fetchSessionByEmail, hasSessionByEmail, saveSessionByEmail } from "@/lib/chatSessionApi";
 
 export type MessageRole = "user" | "assistant" | "system";
@@ -534,6 +534,28 @@ const fillUniqueKeys = (primary: string[], fallback: string[], min: number): str
 const parseRecommendedResourceTitles = (report: string): string[] => {
   const matches = [...report.matchAll(/\*\*\d+\.\s([^\n*]+)\*\*/g)];
   return matches.map((match) => match[1].trim()).filter(Boolean);
+};
+
+const buildRecoveredReportFromProgress = (args: {
+  email: string;
+  name: string;
+  assignedResources: string[];
+  completionPercentage: number;
+  deliverables: Array<{ title: string; summary: string; submittedAt: string }>;
+}): string => {
+  const resources = (args.assignedResources || []).slice(0, 5).map((title, index) => (
+    `**${index + 1}. ${title}**\n` +
+    `**Tipo:** Recurso recomendado UIX\n` +
+    `**Por qué te va a servir:** Recuperado desde tu seguimiento previo en Capital Humano.\n` +
+    `**Recurso:** Disponible en tu ruta de desarrollo UIX.`
+  )).join("\n\n");
+
+  const latestDeliverable = args.deliverables.length ? args.deliverables[args.deliverables.length - 1] : null;
+  const deliverableSection = latestDeliverable
+    ? `### Último entregable registrado\n- **Título:** ${latestDeliverable.title || "Sin título"}\n- **Fecha:** ${latestDeliverable.submittedAt ? new Date(latestDeliverable.submittedAt).toLocaleDateString("es-MX") : "Sin fecha"}\n- **Resumen:** ${latestDeliverable.summary || "Sin resumen"}`
+    : "### Último entregable registrado\n- Aún no hay entregables registrados.";
+
+  return `---REPORTE_INICIO---\n## Tu plan de crecimiento personalizado (recuperado)\n\n### Estado recuperado\n- **Correo de seguimiento:** ${args.email}\n- **Colaborador:** ${args.name || "Colaborador"}\n- **Avance registrado:** ${args.completionPercentage}%\n\n### Recursos recomendados\n${resources || "Sin recursos recuperados."}\n\n${deliverableSection}\n---REPORTE_FIN---`;
 };
 
 const toResourceId = (resource: ResourceData): string => `${resource.label}|${resource.url}`;
@@ -1402,6 +1424,51 @@ ${followUpEmailLine}
     return false;
   }, [applyPersistedState, employeeName, hasSnapshotContent, pickPreferredSnapshot, readLocalSnapshotForEmail]);
 
+  const recoverSessionFromProgress = useCallback(async (email: string, fallbackName?: string): Promise<boolean> => {
+    const normalizedEmail = email.trim().toLowerCase();
+    if (!normalizedEmail) return false;
+
+    try {
+      const progress = await getCollaboratorProgress(normalizedEmail);
+      const hasProgressData = (progress.assignedResources?.length || 0) > 0 || (progress.deliverables?.length || 0) > 0;
+      if (!hasProgressData) return false;
+
+      const report = buildRecoveredReportFromProgress({
+        email: normalizedEmail,
+        name: progress.collaboratorName || fallbackName || "",
+        assignedResources: progress.assignedResources || [],
+        completionPercentage: progress.completionPercentage || 0,
+        deliverables: (progress.deliverables || []).map((item) => ({
+          title: item.title || "",
+          summary: item.summary || "",
+          submittedAt: item.submittedAt || "",
+        })),
+      });
+
+      applyPersistedState({
+        conversationId: Date.now(),
+        messages: [{
+          id: `assistant-recovered-${Date.now()}`,
+          role: "assistant",
+          content: "Recuperamos tu seguimiento desde Capital Humano. Puedes continuar desde Ver avance.",
+        }],
+        isEvaluationComplete: true,
+        employeeName: progress.collaboratorName || fallbackName || "",
+        employeeEmail: normalizedEmail,
+        currentStep: STEPS.length,
+        finalReport: report,
+        followUpCount: 0,
+        isInFollowUp: false,
+        signals: { strengths: {}, opportunities: {} },
+        updatedAt: Date.now(),
+      });
+
+      return true;
+    } catch {
+      return false;
+    }
+  }, [applyPersistedState]);
+
   return {
     conversationId,
     setConversationId,
@@ -1418,5 +1485,6 @@ ${followUpEmailLine}
     checkSessionForEmail,
     loadSessionForEmail,
     forceResumeLatestLocalSession,
+    recoverSessionFromProgress,
   };
 }

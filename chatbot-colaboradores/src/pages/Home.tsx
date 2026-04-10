@@ -73,6 +73,7 @@ export default function Home() {
     checkSessionForEmail,
     loadSessionForEmail,
     forceResumeLatestLocalSession,
+    recoverSessionFromProgress,
   } = useChat();
 
   const hasSavedSession = messages.length > 0 || Boolean(finalReport);
@@ -153,6 +154,12 @@ export default function Home() {
       if (!restored) {
         const recoveredFromLocal = forceResumeLatestLocalSession();
         if (recoveredFromLocal) {
+          setPhase('chat');
+          return true;
+        }
+
+        const recoveredFromProgress = await recoverSessionFromProgress(resolvedEmail, resolvedName);
+        if (recoveredFromProgress) {
           setPhase('chat');
           return true;
         }
