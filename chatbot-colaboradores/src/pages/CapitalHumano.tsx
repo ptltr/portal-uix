@@ -80,38 +80,27 @@ const isDeliverableRelatedToAssignedResources = (collaborator: CollaboratorProgr
   return assigned.some((resource) => resource.length >= 4 && searchableText.includes(resource));
 };
 
-const getDeliverableRelatedCourses = (
+const getDeliverableCourseName = (
   collaborator: CollaboratorProgress,
   deliverable: CollaboratorProgress['deliverables'][number],
-): string[] => {
+): string | null => {
   const assignedResources = collaborator.assignedResources.filter(Boolean);
-  if (!assignedResources.length) return [];
+  if (!assignedResources.length) return null;
 
   const assignedByNormalized = new Map(
     assignedResources.map((resource) => [normalizeText(resource), resource]),
   );
 
-  const directMatches = (deliverable.completedResources || [])
+  const selectedCourse = (deliverable.completedResources || [])
     .map((resource) => normalizeText(resource))
     .map((normalized) => assignedByNormalized.get(normalized) || null)
-    .filter((resource): resource is string => Boolean(resource));
+    .find((resource): resource is string => Boolean(resource));
 
-  if (directMatches.length) {
-    return Array.from(new Set(directMatches));
+  if (selectedCourse) {
+    return selectedCourse;
   }
 
-  const searchableText = normalizeText([
-    deliverable.title,
-    deliverable.summary,
-    ...(deliverable.templateResponses || []).flatMap((response) => [response.prompt, response.response]),
-  ].join(' '));
-
-  const inferredMatches = assignedResources.filter((resource) => {
-    const normalized = normalizeText(resource);
-    return normalized.length >= 4 && searchableText.includes(normalized);
-  });
-
-  return Array.from(new Set(inferredMatches));
+  return null;
 };
 
 const getLatestDeliverable = (collaborator: CollaboratorProgress, onlyRelated: boolean) => {
@@ -403,9 +392,9 @@ export default function CapitalHumano() {
                 const pendingResources = getPendingResourcesCount(collaborator);
                 const latestRelatedDeliverable = getLatestDeliverable(collaborator, true);
                 const latestDeliverable = getLatestDeliverable(collaborator, false);
-                const latestDeliverableCourses = latestDeliverable
-                  ? getDeliverableRelatedCourses(collaborator, latestDeliverable)
-                  : [];
+                const latestDeliverableCourseName = latestDeliverable
+                  ? getDeliverableCourseName(collaborator, latestDeliverable)
+                  : null;
                 const latestDeliverableUpdatedAt = latestDeliverable
                   ? (getDateTimestamp(latestDeliverable.submittedAt) > 0
                     ? latestDeliverable.submittedAt
@@ -497,7 +486,7 @@ export default function CapitalHumano() {
                             <p className="text-sm font-medium text-foreground">{latestDeliverable.title}</p>
                             <p className="text-sm text-muted-foreground whitespace-pre-wrap">{latestDeliverable.summary}</p>
                             <p className="text-xs text-muted-foreground">
-                              Curso relacionado: {latestDeliverableCourses.length ? latestDeliverableCourses.join(', ') : 'No identificado'}
+                              Curso: {latestDeliverableCourseName || 'No identificado'}
                             </p>
                             <div className="mt-3 pt-2 border-t border-white/10">
                               <p className="text-sm font-medium text-foreground">Fecha de actualización: {latestDeliverableUpdatedAtLabel}</p>
