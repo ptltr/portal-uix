@@ -374,6 +374,9 @@ export default function CapitalHumano() {
                     ? latestDeliverable.submittedAt
                     : collaborator.updatedAt)
                   : '';
+                const latestDeliverableUpdatedAtLabel = latestDeliverable
+                  ? formatDateTime(latestDeliverableUpdatedAt)
+                  : 'Sin entregables';
                 const isSendingReminder = Boolean(sendingReminderByEmail[collaborator.collaboratorEmail]);
                 const reminderFeedback = reminderFeedbackByEmail[collaborator.collaboratorEmail];
                 return (
@@ -444,13 +447,20 @@ export default function CapitalHumano() {
                       </div>
 
                       <div className="rounded-2xl border border-white/8 bg-white/5 p-4">
-                        <p className="text-xs text-muted-foreground">Último entregable</p>
+                        <div className="flex items-start justify-between gap-2">
+                          <p className="text-xs text-muted-foreground">Último entregable</p>
+                          {latestDeliverable ? (
+                            <span className="text-[11px] font-semibold text-foreground/90 rounded-full border border-white/15 bg-white/10 px-2 py-0.5">
+                              {latestDeliverableUpdatedAtLabel}
+                            </span>
+                          ) : null}
+                        </div>
                         {latestDeliverable ? (
                           <div className="mt-3 space-y-2">
                             <p className="text-sm font-medium text-foreground">{latestDeliverable.title}</p>
                             <p className="text-sm text-muted-foreground whitespace-pre-wrap">{latestDeliverable.summary}</p>
                             <div className="mt-3 pt-2 border-t border-white/10">
-                              <p className="text-xs text-muted-foreground">Fecha de actualización: {formatDateTime(latestDeliverableUpdatedAt)}</p>
+                              <p className="text-sm font-medium text-foreground">Fecha de actualización: {latestDeliverableUpdatedAtLabel}</p>
                             </div>
                           </div>
                         ) : (
@@ -463,6 +473,7 @@ export default function CapitalHumano() {
                         <div className="mt-3 space-y-2 text-sm text-foreground">
                           <p>{collaborator.completedResourcesCount}/{collaborator.totalResourcesCount} recursos completados</p>
                           <p>{collaborator.deliverables.length} entregable(s) registrados</p>
+                          <p>Última actualización de entregable: {latestDeliverableUpdatedAtLabel}</p>
                           {collaborator.latestAssessmentId ? <p>Evaluación {collaborator.latestAssessmentId}</p> : null}
                         </div>
                       </div>
