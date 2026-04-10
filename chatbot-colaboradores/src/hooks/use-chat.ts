@@ -750,6 +750,45 @@ export function useChat() {
     return hasSnapshotContent(localSnapshot);
   }, [hasSnapshotContent, readLocalSnapshotForEmail]);
 
+  const readLatestLocalSnapshot = useCallback((): PersistedChatState | null => {
+    try {
+      const raw = localStorage.getItem(CHAT_STORAGE_KEY);
+      if (!raw) return null;
+
+      const parsed = JSON.parse(raw) as PartialPersistedChatState;
+      const normalized: PersistedChatState = {
+        conversationId: typeof parsed.conversationId === "number" ? parsed.conversationId : null,
+        messages: Array.isArray(parsed.messages) ? parsed.messages : [],
+        isEvaluationComplete: Boolean(parsed.isEvaluationComplete),
+        employeeName: String(parsed.employeeName || ""),
+        employeeEmail: String(parsed.employeeEmail || "").trim().toLowerCase(),
+        currentStep: typeof parsed.currentStep === "number" ? parsed.currentStep : 0,
+        finalReport: String(parsed.finalReport || parsed.report || ""),
+        followUpCount: typeof parsed.followUpCount === "number" ? parsed.followUpCount : 0,
+        isInFollowUp: Boolean(parsed.isInFollowUp),
+        signals: parsed.signals?.strengths && parsed.signals?.opportunities
+          ? parsed.signals
+          : { strengths: {}, opportunities: {} },
+        updatedAt: typeof parsed.updatedAt === "number" ? parsed.updatedAt : Date.now(),
+      };
+
+      return hasSnapshotContent(normalized) ? normalized : null;
+    } catch {
+      return null;
+    }
+  }, [hasSnapshotContent]);
+
+  const forceResumeLatestLocalSession = useCallback((): boolean => {
+    const snapshot = readLatestLocalSnapshot();
+    if (!snapshot) return false;
+
+    applyPersistedState({
+      ...snapshot,
+      updatedAt: Date.now(),
+    });
+    return true;
+  }, [applyPersistedState, readLatestLocalSnapshot]);
+
   useEffect(() => {
     try {
       const raw = localStorage.getItem(CHAT_STORAGE_KEY);
@@ -1380,5 +1419,6 @@ ${followUpEmailLine}
     finalReport,
     checkSessionForEmail,
     loadSessionForEmail,
+    forceResumeLatestLocalSession,
   };
 }

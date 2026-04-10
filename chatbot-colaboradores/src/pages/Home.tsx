@@ -72,6 +72,7 @@ export default function Home() {
     finalReport,
     checkSessionForEmail,
     loadSessionForEmail,
+    forceResumeLatestLocalSession,
   } = useChat();
 
   const hasSavedSession = messages.length > 0 || Boolean(finalReport);
@@ -150,6 +151,11 @@ export default function Home() {
       }
 
       if (!restored) {
+        const recoveredFromLocal = forceResumeLatestLocalSession();
+        if (recoveredFromLocal) {
+          setPhase('chat');
+          return true;
+        }
         return false;
       }
 

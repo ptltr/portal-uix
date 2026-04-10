@@ -119,6 +119,7 @@ export function WelcomeScreen({
     && Boolean(normalizeEmail(initialUserEmail))
     && normalizeEmail(initialUserEmail) === normalizeEmail(userEmail);
   const hasAnyResumeCandidate = hasSavedSessionForEmail || hasRemoteSessionForEmail;
+  const canAttemptResume = isValidEmail(userEmail);
   const showResumeOptionsInProfile = isValidEmail(userEmail);
 
   useEffect(() => {
@@ -355,7 +356,7 @@ export function WelcomeScreen({
                   <div className="grid gap-2 sm:grid-cols-2">
                     <button
                       onClick={() => {
-                        if (!hasAnyResumeCandidate) return;
+                        if (!canAttemptResume) return;
                         void handleResume({
                           userName: userName.trim(),
                           userEmail: userEmail.trim(),
@@ -365,10 +366,10 @@ export function WelcomeScreen({
                               : 'local',
                         });
                       }}
-                      disabled={!hasAnyResumeCandidate}
+                      disabled={!canAttemptResume}
                       className="w-full rounded-xl py-2.5 text-sm font-semibold text-foreground glass-card border border-white/12 hover:border-primary/40 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                     >
-                      Retomar conversación
+                      {hasAnyResumeCandidate ? 'Retomar conversación' : 'Intentar retomar conversación'}
                     </button>
                     <button
                       onClick={() => handleStartFresh('profile', false)}
