@@ -1,5 +1,4 @@
 import type { PersistedChatState } from "@/hooks/use-chat";
-import { getReminderBackendBaseUrl } from "@/lib/collaboratorProgressApi";
 
 const isAppsScriptEndpoint = (url: string): boolean => {
   return /script\.google\.com\/macros\/s\/.+\/exec/.test(url);
@@ -46,9 +45,6 @@ const getApiBaseUrl = (): string => {
       return normalized;
     }
   }
-
-  const fromSharedSetting = getReminderBackendBaseUrl();
-  if (fromSharedSetting) return fromSharedSetting.replace(/\/$/, "");
 
   if (typeof window === "undefined") return "";
 
@@ -155,20 +151,38 @@ export const saveSessionByEmail = async (email: string, snapshot: PersistedChatS
   };
 
   const saveWithRest = async (): Promise<void> => {
-    await fetch(`${baseUrl}/api/chat-sessions/${encodeURIComponent(normalized)}`, {
+    const response = await fetch(`${baseUrl}/api/chat-sessions/${encodeURIComponent(normalized)}`, {
       method: "PUT",
       headers: {
         "Content-Type": "application/json",
       },
       body: JSON.stringify(payload),
     });
+
+    if (!response.ok) {
+      throw new Error(`Failed to persist chat session via REST: ${response.status}`);
+    }
   };
 
   const saveWithAppsScript = async (): Promise<void> => {
-    await callAppsScriptPost(baseUrl, "upsertChatSession", {
+    const result = await callAppsScriptPost<unknown>(baseUrl, "upsertChatSession", {
       email: normalized,
       snapshot: payload,
     });
+
+    // Ignore webhook-only responses that do not confirm session storage.
+    if (
+      !result
+      || typeof result !== "object"
+      || ((result as { message?: string }).message || "").toLowerCase() === "webhook_alive"
+    ) {
+      throw new Error("Apps Script session save did not confirm storage.");
+    }
+
+    const maybeOk = result as { ok?: boolean };
+    if (maybeOk.ok === false) {
+      throw new Error("Apps Script rejected session save.");
+    }
   };
 
   if (isAppsScriptEndpoint(baseUrl)) {
