@@ -163,13 +163,8 @@ export default function Home() {
           return true;
         }
 
-        // Do not block the user in welcome state when resume lookup fails.
-        // Keep previous UX behavior: continue to chat and allow progress from there.
-        if (!conversationId) {
-          setConversationId(Date.now());
-        }
-        setPhase('chat');
-        return true;
+        // Avoid opening an empty chat when no history was actually restored.
+        return false;
       }
 
       setPhase('chat');

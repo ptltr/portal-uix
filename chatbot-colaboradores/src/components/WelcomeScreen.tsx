@@ -203,8 +203,7 @@ export function WelcomeScreen({
     setResumeError('');
     const result = await onResumeSession?.(payload);
     if (result === false) {
-      // Resume is non-blocking now; avoid showing a false-negative error banner.
-      setResumeError('');
+      setResumeError('No encontramos historial recuperable para este correo en este momento.');
     }
   };
 
