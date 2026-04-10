@@ -712,6 +712,17 @@ export function useChat() {
     );
   }, []);
 
+  const getSnapshotResumeScore = useCallback((snapshot: PersistedChatState | null | undefined): number => {
+    if (!snapshot) return -1;
+
+    const messageCount = Array.isArray(snapshot.messages) ? snapshot.messages.length : 0;
+    const hasReport = Boolean(snapshot.finalReport);
+    const updatedAt = typeof snapshot.updatedAt === "number" ? snapshot.updatedAt : 0;
+
+    // Prefer full conversation history over newer but sparse records.
+    return (messageCount * 1_000_000) + (hasReport ? 1_000 : 0) + updatedAt;
+  }, []);
+
   const readSessionsArchive = useCallback((): Record<string, PersistedChatState> => {
     try {
       const raw = localStorage.getItem(CHAT_SESSIONS_ARCHIVE_KEY);
@@ -1472,9 +1483,9 @@ ${followUpEmailLine}
     const validRemote = remoteSession && hasSnapshotContent(remoteSession) ? remoteSession : null;
     const validLocal = localSession && hasSnapshotContent(localSession) ? localSession : null;
 
-    const remoteUpdatedAt = validRemote?.updatedAt || 0;
-    const localUpdatedAt = validLocal?.updatedAt || 0;
-    const selected = (validRemote && remoteUpdatedAt >= localUpdatedAt) ? validRemote : validLocal;
+    const remoteScore = getSnapshotResumeScore(validRemote);
+    const localScore = getSnapshotResumeScore(validLocal);
+    const selected = remoteScore >= localScore ? validRemote : validLocal;
 
     if (selected) {
       try {
@@ -1505,7 +1516,7 @@ ${followUpEmailLine}
     }
 
     return false;
-  }, [applyPersistedState, employeeName, hasSnapshotContent, readLocalSnapshotForEmail, readLatestLocalSnapshot]);
+  }, [applyPersistedState, employeeName, getSnapshotResumeScore, hasSnapshotContent, readLocalSnapshotForEmail, readLatestLocalSnapshot]);
 
   return {
     conversationId,
