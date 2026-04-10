@@ -27,6 +27,71 @@ const getDisplayStatus = (collaborator: CollaboratorProgress): CollaboratorProgr
   return 'at-risk';
 };
 
+const getDateTimestamp = (value: string): number => {
+  const parsed = Date.parse(value);
+  return Number.isNaN(parsed) ? 0 : parsed;
+};
+
+const normalizeText = (value: string): string => {
+  return value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim();
+};
+
+const formatDate = (value: string): string => {
+  const parsed = Date.parse(value);
+  if (Number.isNaN(parsed)) return 'Sin fecha';
+  return new Date(parsed).toLocaleDateString('es-MX');
+};
+
+const formatDateTime = (value: string): string => {
+  const parsed = Date.parse(value);
+  if (Number.isNaN(parsed)) return 'Sin fecha';
+  return new Date(parsed).toLocaleString('es-MX', {
+    dateStyle: 'short',
+    timeStyle: 'short',
+  });
+};
+
+const isDeliverableRelatedToAssignedResources = (collaborator: CollaboratorProgress, deliverable: CollaboratorProgress['deliverables'][number]): boolean => {
+  if (!collaborator.assignedResources.length) return false;
+
+  const assigned = collaborator.assignedResources
+    .map((resource) => normalizeText(resource))
+    .filter(Boolean);
+
+  if (!assigned.length) return false;
+
+  const completed = (deliverable.completedResources || [])
+    .map((resource) => normalizeText(resource))
+    .filter(Boolean);
+
+  if (completed.some((resource) => assigned.includes(resource))) return true;
+
+  const searchableText = normalizeText([
+    deliverable.title,
+    deliverable.summary,
+    ...(deliverable.templateResponses || []).flatMap((response) => [response.prompt, response.response]),
+    ...completed,
+  ].join(' '));
+
+  return assigned.some((resource) => resource.length >= 4 && searchableText.includes(resource));
+};
+
+const getLatestDeliverable = (collaborator: CollaboratorProgress, onlyRelated: boolean) => {
+  const source = onlyRelated
+    ? collaborator.deliverables.filter((deliverable) => isDeliverableRelatedToAssignedResources(collaborator, deliverable))
+    : collaborator.deliverables;
+
+  if (!source.length) return null;
+
+  return source.reduce((latest, current) => {
+    return getDateTimestamp(current.submittedAt) >= getDateTimestamp(latest.submittedAt) ? current : latest;
+  });
+};
+
 export default function CapitalHumano() {
   const [collaborators, setCollaborators] = useState<CollaboratorProgress[]>([]);
   const [loading, setLoading] = useState(true);
@@ -302,6 +367,13 @@ export default function CapitalHumano() {
               {collaborators.map((collaborator) => {
                 const meta = statusMeta[getDisplayStatus(collaborator)];
                 const pendingResources = getPendingResourcesCount(collaborator);
+                const latestRelatedDeliverable = getLatestDeliverable(collaborator, true);
+                const latestDeliverable = getLatestDeliverable(collaborator, false);
+                const latestDeliverableUpdatedAt = latestDeliverable
+                  ? (getDateTimestamp(latestDeliverable.submittedAt) > 0
+                    ? latestDeliverable.submittedAt
+                    : collaborator.updatedAt)
+                  : '';
                 const isSendingReminder = Boolean(sendingReminderByEmail[collaborator.collaboratorEmail]);
                 const reminderFeedback = reminderFeedbackByEmail[collaborator.collaboratorEmail];
                 return (
@@ -312,7 +384,11 @@ export default function CapitalHumano() {
                         <div className="mt-1 flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
                           <span>{collaborator.collaboratorEmail}</span>
                           {collaborator.profile ? <span>• {collaborator.profile}</span> : null}
-                          <span>• Actualizado {new Date(collaborator.updatedAt).toLocaleDateString('es-MX')}</span>
+                          <span>
+                            • Actualizado {latestRelatedDeliverable
+                              ? formatDate(latestRelatedDeliverable.submittedAt)
+                              : 'Sin actividad en cursos asignados'}
+                          </span>
                         </div>
                       </div>
                       <div className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold ${meta.tone}`} style={{ background: meta.chip }}>
@@ -369,10 +445,13 @@ export default function CapitalHumano() {
 
                       <div className="rounded-2xl border border-white/8 bg-white/5 p-4">
                         <p className="text-xs text-muted-foreground">Último entregable</p>
-                        {collaborator.deliverables.length ? (
+                        {latestDeliverable ? (
                           <div className="mt-3 space-y-2">
-                            <p className="text-sm font-medium text-foreground">{collaborator.deliverables[collaborator.deliverables.length - 1].title}</p>
-                            <p className="text-sm text-muted-foreground whitespace-pre-wrap">{collaborator.deliverables[collaborator.deliverables.length - 1].summary}</p>
+                            <p className="text-sm font-medium text-foreground">{latestDeliverable.title}</p>
+                            <p className="text-sm text-muted-foreground whitespace-pre-wrap">{latestDeliverable.summary}</p>
+                            <div className="mt-3 pt-2 border-t border-white/10">
+                              <p className="text-xs text-muted-foreground">Fecha de actualización: {formatDateTime(latestDeliverableUpdatedAt)}</p>
+                            </div>
                           </div>
                         ) : (
                           <p className="mt-3 text-sm text-muted-foreground">Aún sin entregables registrados.</p>
