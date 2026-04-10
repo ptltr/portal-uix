@@ -52,6 +52,7 @@ type PartialPersistedChatState = Partial<PersistedChatState> & {
 };
 
 const CHAT_STORAGE_KEY = "uix-chat-session-v1";
+const CHAT_SESSIONS_ARCHIVE_KEY = "uix-chat-sessions-by-email-v1";
 
 const migrateLegacyReportContent = (report: string): string => {
   if (!report) return report;
@@ -711,38 +712,103 @@ export function useChat() {
     );
   }, []);
 
-  const readLocalSnapshotForEmail = useCallback((email: string): PersistedChatState | null => {
+  const readSessionsArchive = useCallback((): Record<string, PersistedChatState> => {
     try {
-      const raw = localStorage.getItem(CHAT_STORAGE_KEY);
-      if (!raw) return null;
+      const raw = localStorage.getItem(CHAT_SESSIONS_ARCHIVE_KEY);
+      if (!raw) return {};
 
-      const parsed = JSON.parse(raw) as PartialPersistedChatState;
-      const storedEmail = String(parsed.employeeEmail || "").trim().toLowerCase();
-      if (storedEmail !== email.trim().toLowerCase()) {
-        return null;
+      const parsed = JSON.parse(raw) as Record<string, PartialPersistedChatState>;
+      const archive: Record<string, PersistedChatState> = {};
+
+      for (const [emailKey, snapshot] of Object.entries(parsed || {})) {
+        const email = String(emailKey || "").trim().toLowerCase();
+        if (!email) continue;
+
+        const normalized: PersistedChatState = {
+          conversationId: typeof snapshot?.conversationId === "number" ? snapshot.conversationId : null,
+          messages: Array.isArray(snapshot?.messages) ? snapshot.messages : [],
+          isEvaluationComplete: Boolean(snapshot?.isEvaluationComplete),
+          employeeName: String(snapshot?.employeeName || ""),
+          employeeEmail: email,
+          currentStep: typeof snapshot?.currentStep === "number" ? snapshot.currentStep : 0,
+          finalReport: String(snapshot?.finalReport || snapshot?.report || ""),
+          followUpCount: typeof snapshot?.followUpCount === "number" ? snapshot.followUpCount : 0,
+          isInFollowUp: Boolean(snapshot?.isInFollowUp),
+          signals: snapshot?.signals?.strengths && snapshot?.signals?.opportunities
+            ? snapshot.signals
+            : { strengths: {}, opportunities: {} },
+          updatedAt: typeof snapshot?.updatedAt === "number" ? snapshot.updatedAt : Date.now(),
+        };
+
+        archive[email] = normalized;
       }
 
-      const normalized: PersistedChatState = {
-        conversationId: typeof parsed.conversationId === "number" ? parsed.conversationId : null,
-        messages: Array.isArray(parsed.messages) ? parsed.messages : [],
-        isEvaluationComplete: Boolean(parsed.isEvaluationComplete),
-        employeeName: String(parsed.employeeName || ""),
-        employeeEmail: storedEmail,
-        currentStep: typeof parsed.currentStep === "number" ? parsed.currentStep : 0,
-        finalReport: String(parsed.finalReport || parsed.report || ""),
-        followUpCount: typeof parsed.followUpCount === "number" ? parsed.followUpCount : 0,
-        isInFollowUp: Boolean(parsed.isInFollowUp),
-        signals: parsed.signals?.strengths && parsed.signals?.opportunities
-          ? parsed.signals
-          : { strengths: {}, opportunities: {} },
-        updatedAt: typeof parsed.updatedAt === "number" ? parsed.updatedAt : Date.now(),
-      };
-
-      return normalized;
+      return archive;
     } catch {
-      return null;
+      return {};
     }
   }, []);
+
+  const writeSessionsArchive = useCallback((archive: Record<string, PersistedChatState>) => {
+    try {
+      localStorage.setItem(CHAT_SESSIONS_ARCHIVE_KEY, JSON.stringify(archive));
+    } catch {
+      // Ignore storage write errors (quota/private mode).
+    }
+  }, []);
+
+  const upsertArchiveSnapshot = useCallback((snapshot: PersistedChatState) => {
+    const email = String(snapshot.employeeEmail || "").trim().toLowerCase();
+    if (!email) return;
+    if (!hasSnapshotContent(snapshot)) return;
+
+    const archive = readSessionsArchive();
+    const current = archive[email];
+    if (!current || (snapshot.updatedAt || 0) >= (current.updatedAt || 0)) {
+      archive[email] = {
+        ...snapshot,
+        employeeEmail: email,
+      };
+      writeSessionsArchive(archive);
+    }
+  }, [hasSnapshotContent, readSessionsArchive, writeSessionsArchive]);
+
+  const readLocalSnapshotForEmail = useCallback((email: string): PersistedChatState | null => {
+    const normalizedEmail = email.trim().toLowerCase();
+
+    try {
+      const raw = localStorage.getItem(CHAT_STORAGE_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw) as PartialPersistedChatState;
+        const storedEmail = String(parsed.employeeEmail || "").trim().toLowerCase();
+        if (storedEmail === normalizedEmail) {
+          const normalized: PersistedChatState = {
+            conversationId: typeof parsed.conversationId === "number" ? parsed.conversationId : null,
+            messages: Array.isArray(parsed.messages) ? parsed.messages : [],
+            isEvaluationComplete: Boolean(parsed.isEvaluationComplete),
+            employeeName: String(parsed.employeeName || ""),
+            employeeEmail: storedEmail,
+            currentStep: typeof parsed.currentStep === "number" ? parsed.currentStep : 0,
+            finalReport: String(parsed.finalReport || parsed.report || ""),
+            followUpCount: typeof parsed.followUpCount === "number" ? parsed.followUpCount : 0,
+            isInFollowUp: Boolean(parsed.isInFollowUp),
+            signals: parsed.signals?.strengths && parsed.signals?.opportunities
+              ? parsed.signals
+              : { strengths: {}, opportunities: {} },
+            updatedAt: typeof parsed.updatedAt === "number" ? parsed.updatedAt : Date.now(),
+          };
+
+          return normalized;
+        }
+      }
+
+      const archive = readSessionsArchive();
+      return archive[normalizedEmail] || null;
+    } catch {
+      const archive = readSessionsArchive();
+      return archive[normalizedEmail] || null;
+    }
+  }, [readSessionsArchive]);
 
   const hasLocalSessionForEmail = useCallback((email: string): boolean => {
     const localSnapshot = readLocalSnapshotForEmail(email);
@@ -776,7 +842,9 @@ export function useChat() {
     } catch {
       // Ignore storage write errors (quota/private mode).
     }
-  }, [getPersistedSnapshot, isTyping]);
+
+    upsertArchiveSnapshot(snapshot);
+  }, [getPersistedSnapshot, isTyping, upsertArchiveSnapshot]);
 
   useEffect(() => {
     if (!hasHydratedRef.current || isTyping || !employeeEmail.trim()) return;
@@ -1313,6 +1381,9 @@ ${followUpEmailLine}
   }, [buildPersonalizedReport, currentStep, employeeName, generateContextualResponse]);
 
   const resetChat = useCallback(() => {
+    const snapshotBeforeReset = getPersistedSnapshot();
+    upsertArchiveSnapshot(snapshotBeforeReset);
+
     setConversationId(null);
     setMessages([]);
     setIsEvaluationComplete(false);
@@ -1329,7 +1400,7 @@ ${followUpEmailLine}
     } catch {
       // Ignore storage cleanup errors.
     }
-  }, []);
+  }, [getPersistedSnapshot, upsertArchiveSnapshot]);
 
   const checkSessionForEmail = useCallback(async (email: string): Promise<boolean> => {
     const hasLocal = hasLocalSessionForEmail(email);
@@ -1354,6 +1425,11 @@ ${followUpEmailLine}
     const selected = (validRemote && remoteUpdatedAt >= localUpdatedAt) ? validRemote : validLocal;
 
     if (selected) {
+      try {
+        localStorage.setItem(CHAT_STORAGE_KEY, JSON.stringify(selected));
+      } catch {
+        // Ignore storage write errors (quota/private mode).
+      }
       applyPersistedState({
         ...selected,
         employeeEmail: normalizedEmail,
