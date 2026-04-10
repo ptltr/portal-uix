@@ -162,7 +162,11 @@ export default function Home() {
           setPhase('chat');
           return true;
         }
-        return false;
+
+        // Do not block the user in welcome state when resume lookup fails.
+        // Keep previous UX behavior: continue to chat and allow progress from there.
+        setPhase('chat');
+        return true;
       }
 
       setPhase('chat');
