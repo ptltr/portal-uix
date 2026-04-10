@@ -179,12 +179,42 @@ const getSessionLookupBaseUrls = (): string[] => {
   return Array.from(new Set(urls));
 };
 
-const getSessionScore = (snapshot: PersistedChatState | null): number => {
-  if (!snapshot) return -1;
-  const messagesCount = Array.isArray(snapshot.messages) ? snapshot.messages.length : 0;
-  const hasReport = Boolean(snapshot.finalReport);
-  const updatedAt = typeof snapshot.updatedAt === "number" ? snapshot.updatedAt : 0;
-  return (messagesCount * 1_000_000) + (hasReport ? 1_000 : 0) + updatedAt;
+const getSessionRank = (snapshot: PersistedChatState | null) => {
+  if (!snapshot) {
+    return { userMessagesCount: -1, hasReport: 0, updatedAt: 0 };
+  }
+
+  const userMessagesCount = Array.isArray(snapshot.messages)
+    ? snapshot.messages.filter((msg) => msg?.role === "user" && String(msg.content || "").trim().length > 0).length
+    : 0;
+
+  return {
+    userMessagesCount,
+    hasReport: snapshot.finalReport ? 1 : 0,
+    updatedAt: typeof snapshot.updatedAt === "number" ? snapshot.updatedAt : 0,
+  };
+};
+
+const pickBetterSession = (
+  first: PersistedChatState | null,
+  second: PersistedChatState | null,
+): PersistedChatState | null => {
+  const a = getSessionRank(first);
+  const b = getSessionRank(second);
+
+  if (a.userMessagesCount !== b.userMessagesCount) {
+    return a.userMessagesCount > b.userMessagesCount ? first : second;
+  }
+
+  if (a.hasReport !== b.hasReport) {
+    return a.hasReport > b.hasReport ? first : second;
+  }
+
+  if (a.updatedAt !== b.updatedAt) {
+    return a.updatedAt >= b.updatedAt ? first : second;
+  }
+
+  return first || second;
 };
 
 export const hasSessionByEmail = async (email: string): Promise<boolean> => {
@@ -212,15 +242,10 @@ export const fetchSessionByEmail = async (email: string): Promise<PersistedChatS
   }
 
   let best: PersistedChatState | null = null;
-  let bestScore = -1;
 
   for (const baseUrl of baseUrls) {
     const snapshot = await fetchSessionSnapshot(baseUrl, normalized);
-    const score = getSessionScore(snapshot);
-    if (score > bestScore) {
-      best = snapshot;
-      bestScore = score;
-    }
+    best = pickBetterSession(best, snapshot);
   }
 
   return best;

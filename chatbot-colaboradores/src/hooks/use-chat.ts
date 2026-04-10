@@ -713,16 +713,43 @@ export function useChat() {
     );
   }, []);
 
-  const getSnapshotResumeScore = useCallback((snapshot: PersistedChatState | null | undefined): number => {
-    if (!snapshot) return -1;
+  const getSnapshotResumeRank = useCallback((snapshot: PersistedChatState | null | undefined) => {
+    if (!snapshot) {
+      return { userMessagesCount: -1, hasReport: 0, updatedAt: 0 };
+    }
 
-    const messageCount = Array.isArray(snapshot.messages) ? snapshot.messages.length : 0;
-    const hasReport = Boolean(snapshot.finalReport);
-    const updatedAt = typeof snapshot.updatedAt === "number" ? snapshot.updatedAt : 0;
+    const userMessagesCount = Array.isArray(snapshot.messages)
+      ? snapshot.messages.filter((msg) => msg?.role === "user" && String(msg.content || "").trim().length > 0).length
+      : 0;
 
-    // Prefer full conversation history over newer but sparse records.
-    return (messageCount * 1_000_000) + (hasReport ? 1_000 : 0) + updatedAt;
+    return {
+      userMessagesCount,
+      hasReport: snapshot.finalReport ? 1 : 0,
+      updatedAt: typeof snapshot.updatedAt === "number" ? snapshot.updatedAt : 0,
+    };
   }, []);
+
+  const pickPreferredSnapshot = useCallback(
+    (first: PersistedChatState | null, second: PersistedChatState | null): PersistedChatState | null => {
+      const a = getSnapshotResumeRank(first);
+      const b = getSnapshotResumeRank(second);
+
+      if (a.userMessagesCount !== b.userMessagesCount) {
+        return a.userMessagesCount > b.userMessagesCount ? first : second;
+      }
+
+      if (a.hasReport !== b.hasReport) {
+        return a.hasReport > b.hasReport ? first : second;
+      }
+
+      if (a.updatedAt !== b.updatedAt) {
+        return a.updatedAt >= b.updatedAt ? first : second;
+      }
+
+      return first || second;
+    },
+    [getSnapshotResumeRank],
+  );
 
   const readSessionsArchive = useCallback((): Record<string, PersistedChatState> => {
     try {
@@ -1484,9 +1511,7 @@ ${followUpEmailLine}
     const validRemote = remoteSession && hasSnapshotContent(remoteSession) ? remoteSession : null;
     const validLocal = localSession && hasSnapshotContent(localSession) ? localSession : null;
 
-    const remoteScore = getSnapshotResumeScore(validRemote);
-    const localScore = getSnapshotResumeScore(validLocal);
-    const selected = remoteScore >= localScore ? validRemote : validLocal;
+    const selected = pickPreferredSnapshot(validRemote, validLocal);
 
     if (selected) {
       try {
@@ -1517,7 +1542,7 @@ ${followUpEmailLine}
     }
 
     return false;
-  }, [applyPersistedState, employeeName, getSnapshotResumeScore, hasSnapshotContent, readLocalSnapshotForEmail, readLatestLocalSnapshot]);
+  }, [applyPersistedState, employeeName, hasSnapshotContent, pickPreferredSnapshot, readLocalSnapshotForEmail, readLatestLocalSnapshot]);
 
   return {
     conversationId,
