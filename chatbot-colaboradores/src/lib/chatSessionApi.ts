@@ -65,6 +65,7 @@ const getApiBaseUrl = (): string => {
 };
 
 const normalizeEmail = (value: string): string => value.trim().toLowerCase();
+const LEGACY_REMINDER_API_BASE_URL_KEY = "uix-reminder-api-base-url";
 
 const isValidEmail = (value: string): boolean => /\S+@\S+\.\S+/.test(value.trim());
 
@@ -114,27 +115,61 @@ const fetchSessionSnapshot = async (baseUrl: string, email: string): Promise<Per
   return fetchSessionSnapshotFromAppsScript(baseUrl, email);
 };
 
+const getSessionLookupBaseUrls = (): string[] => {
+  const urls: string[] = [];
+
+  const primary = getApiBaseUrl();
+  if (primary) urls.push(primary.replace(/\/$/, ""));
+
+  const fromReminderEnv = (import.meta as ImportMeta & { env?: Record<string, string> }).env?.VITE_REMINDER_API_BASE_URL;
+  if (fromReminderEnv) {
+    const normalized = fromReminderEnv.replace(/\/$/, "");
+    if (normalized) urls.push(normalized);
+  }
+
+  if (typeof window !== "undefined") {
+    try {
+      const fromStorage = localStorage.getItem(LEGACY_REMINDER_API_BASE_URL_KEY) || "";
+      const normalized = fromStorage.replace(/\/$/, "");
+      if (normalized) urls.push(normalized);
+    } catch {
+      // Ignore localStorage access errors.
+    }
+  }
+
+  return Array.from(new Set(urls));
+};
+
 export const hasSessionByEmail = async (email: string): Promise<boolean> => {
   const normalized = normalizeEmail(email);
-  const baseUrl = getApiBaseUrl();
+  const baseUrls = getSessionLookupBaseUrls();
 
-  if (!baseUrl || !isValidEmail(normalized)) {
+  if (!baseUrls.length || !isValidEmail(normalized)) {
     return false;
   }
 
-  const snapshot = await fetchSessionSnapshot(baseUrl, normalized);
-  return Boolean(snapshot);
+  for (const baseUrl of baseUrls) {
+    const snapshot = await fetchSessionSnapshot(baseUrl, normalized);
+    if (snapshot) return true;
+  }
+
+  return false;
 };
 
 export const fetchSessionByEmail = async (email: string): Promise<PersistedChatState | null> => {
   const normalized = normalizeEmail(email);
-  const baseUrl = getApiBaseUrl();
+  const baseUrls = getSessionLookupBaseUrls();
 
-  if (!baseUrl || !isValidEmail(normalized)) {
+  if (!baseUrls.length || !isValidEmail(normalized)) {
     return null;
   }
 
-  return fetchSessionSnapshot(baseUrl, normalized);
+  for (const baseUrl of baseUrls) {
+    const snapshot = await fetchSessionSnapshot(baseUrl, normalized);
+    if (snapshot) return snapshot;
+  }
+
+  return null;
 };
 
 export const saveSessionByEmail = async (email: string, snapshot: PersistedChatState): Promise<void> => {
