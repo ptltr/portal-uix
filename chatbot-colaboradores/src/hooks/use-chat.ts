@@ -705,9 +705,10 @@ export function useChat() {
 
     const parsedMessages = Array.isArray(snapshot.messages) ? snapshot.messages : [];
     const normalizedReport = snapshot.finalReport || "";
+    const hasUserMessages = parsedMessages.some((msg) => msg?.role === "user" && String(msg.content || "").trim().length > 0);
 
     return (
-      parsedMessages.length > 0
+      hasUserMessages
       || Boolean(normalizedReport)
     );
   }, []);
