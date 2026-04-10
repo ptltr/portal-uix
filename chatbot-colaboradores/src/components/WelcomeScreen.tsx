@@ -203,7 +203,8 @@ export function WelcomeScreen({
     setResumeError('');
     const result = await onResumeSession?.(payload);
     if (result === false) {
-      setResumeError('No pudimos cargar el historial para este correo. Verifica que uses el mismo correo del registro.');
+      // Resume is non-blocking now; avoid showing a false-negative error banner.
+      setResumeError('');
     }
   };
 
