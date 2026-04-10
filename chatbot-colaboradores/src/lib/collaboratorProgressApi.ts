@@ -380,7 +380,7 @@ const normalizeResourceList = (value: unknown): string[] => {
     .filter(Boolean);
 };
 
-const normalizeDeliverables = (value: unknown): DeliverableRecord[] => {
+const normalizeDeliverables = (value: unknown, fallbackSubmittedAt?: string): DeliverableRecord[] => {
   if (!Array.isArray(value)) return [];
 
   return value
@@ -391,7 +391,7 @@ const normalizeDeliverables = (value: unknown): DeliverableRecord[] => {
       const id = typeof record.id === "string" && record.id.trim() ? record.id.trim() : `legacy-${Date.now()}-${index}`;
       const submittedAt = typeof record.submittedAt === "string" && record.submittedAt.trim()
         ? record.submittedAt
-        : new Date().toISOString();
+        : (fallbackSubmittedAt || "");
 
       return {
         collaboratorEmail,
@@ -418,7 +418,10 @@ const normalizeProgressRecord = (value: unknown): CollaboratorProgress | null =>
   if (!collaboratorEmail) return null;
 
   const assignedResources = normalizeResourceList(raw.assignedResources);
-  const deliverables = normalizeDeliverables(raw.deliverables);
+  const fallbackSubmittedAt = typeof raw.updatedAt === "string" && raw.updatedAt.trim()
+    ? raw.updatedAt
+    : "";
+  const deliverables = normalizeDeliverables(raw.deliverables, fallbackSubmittedAt);
   const totalResourcesCount = Math.max(
     toFiniteNumber(raw.totalResourcesCount, assignedResources.length || 5),
     assignedResources.length || 1,
@@ -493,6 +496,52 @@ const mergeProgressLists = (
   }
 
   return Object.values(merged).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+};
+
+const mergeProgressRecordPair = (
+  primary: CollaboratorProgress,
+  secondary: CollaboratorProgress,
+): CollaboratorProgress => {
+  const deliverablesById = new Map<string, DeliverableRecord>();
+  for (const item of [...secondary.deliverables, ...primary.deliverables]) {
+    if (item?.id) {
+      deliverablesById.set(item.id, item);
+    }
+  }
+
+  const mergedDeliverables = Array.from(deliverablesById.values()).sort((a, b) => {
+    return String(a.submittedAt || "").localeCompare(String(b.submittedAt || ""));
+  });
+
+  const totalResourcesCount = Math.max(primary.totalResourcesCount, secondary.totalResourcesCount, 1);
+  const completedResourcesCount = Math.min(
+    totalResourcesCount,
+    Math.max(primary.completedResourcesCount, secondary.completedResourcesCount),
+  );
+  const completionPercentage = Math.min(
+    100,
+    Math.max(
+      primary.completionPercentage,
+      secondary.completionPercentage,
+      Math.round((completedResourcesCount / totalResourcesCount) * 100),
+    ),
+  );
+
+  return {
+    ...primary,
+    collaboratorName: primary.collaboratorName || secondary.collaboratorName,
+    profile: primary.profile || secondary.profile,
+    latestAssessmentId: primary.latestAssessmentId || secondary.latestAssessmentId,
+    assignedResources: primary.assignedResources.length ? primary.assignedResources : secondary.assignedResources,
+    totalResourcesCount,
+    completedResourcesCount,
+    completionPercentage,
+    status: buildProgressStatus(completionPercentage),
+    deliverables: mergedDeliverables,
+    updatedAt: String(primary.updatedAt || "").localeCompare(String(secondary.updatedAt || "")) >= 0
+      ? primary.updatedAt
+      : secondary.updatedAt,
+  };
 };
 
 const upsertLocalAssessment = (payload: SyncCollaboratorAssessmentPayload): CollaboratorProgress => {
@@ -629,7 +678,9 @@ export const getCollaboratorProgress = async (collaboratorEmail: string): Promis
     try {
       if (isAppsScriptEndpoint(baseUrl)) {
         const remote = await callAppsScriptGet<CollaboratorProgress>(baseUrl, "getCollaboratorProgress", { email });
-        return normalizeProgressRecord(remote) || localRecord || createEmptyProgress(email);
+        const remoteRecord = normalizeProgressRecord(remote);
+        if (remoteRecord && localRecord) return mergeProgressRecordPair(remoteRecord, localRecord);
+        return remoteRecord || localRecord || createEmptyProgress(email);
       }
 
       const response = await fetch(`${baseUrl}/api/collaborators/progress/${encodeURIComponent(email)}`);
@@ -638,7 +689,9 @@ export const getCollaboratorProgress = async (collaboratorEmail: string): Promis
       }
 
       const remote = (await response.json()) as CollaboratorProgress;
-      return normalizeProgressRecord(remote) || localRecord || createEmptyProgress(email);
+      const remoteRecord = normalizeProgressRecord(remote);
+      if (remoteRecord && localRecord) return mergeProgressRecordPair(remoteRecord, localRecord);
+      return remoteRecord || localRecord || createEmptyProgress(email);
     } catch {
       return localRecord || createEmptyProgress(email);
     }
