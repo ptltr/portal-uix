@@ -810,6 +810,42 @@ export function useChat() {
     }
   }, [readSessionsArchive]);
 
+  const readLatestLocalSnapshot = useCallback((): PersistedChatState | null => {
+    try {
+      const raw = localStorage.getItem(CHAT_STORAGE_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw) as PartialPersistedChatState;
+        const normalized: PersistedChatState = {
+          conversationId: typeof parsed.conversationId === "number" ? parsed.conversationId : null,
+          messages: Array.isArray(parsed.messages) ? parsed.messages : [],
+          isEvaluationComplete: Boolean(parsed.isEvaluationComplete),
+          employeeName: String(parsed.employeeName || ""),
+          employeeEmail: String(parsed.employeeEmail || "").trim().toLowerCase(),
+          currentStep: typeof parsed.currentStep === "number" ? parsed.currentStep : 0,
+          finalReport: String(parsed.finalReport || parsed.report || ""),
+          followUpCount: typeof parsed.followUpCount === "number" ? parsed.followUpCount : 0,
+          isInFollowUp: Boolean(parsed.isInFollowUp),
+          signals: parsed.signals?.strengths && parsed.signals?.opportunities
+            ? parsed.signals
+            : { strengths: {}, opportunities: {} },
+          updatedAt: typeof parsed.updatedAt === "number" ? parsed.updatedAt : Date.now(),
+        };
+
+        if (hasSnapshotContent(normalized)) {
+          return normalized;
+        }
+      }
+    } catch {
+      // Ignore malformed active session snapshot.
+    }
+
+    const archive = readSessionsArchive();
+    const candidates = Object.values(archive).filter((snapshot) => hasSnapshotContent(snapshot));
+    if (!candidates.length) return null;
+
+    return candidates.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))[0] || null;
+  }, [hasSnapshotContent, readSessionsArchive]);
+
   const hasLocalSessionForEmail = useCallback((email: string): boolean => {
     const localSnapshot = readLocalSnapshotForEmail(email);
     return hasSnapshotContent(localSnapshot);
@@ -1406,8 +1442,11 @@ ${followUpEmailLine}
     const hasLocal = hasLocalSessionForEmail(email);
     if (hasLocal) return true;
 
+    const latestLocal = readLatestLocalSnapshot();
+    if (latestLocal) return true;
+
     return hasSessionByEmail(email);
-  }, [hasLocalSessionForEmail]);
+  }, [hasLocalSessionForEmail, readLatestLocalSnapshot]);
 
   const loadSessionForEmail = useCallback(async (email: string): Promise<boolean> => {
     const normalizedEmail = email.trim().toLowerCase();
@@ -1439,8 +1478,21 @@ ${followUpEmailLine}
       return true;
     }
 
+    // Compatibility fallback: if exact email history is unavailable,
+    // restore latest local conversation to avoid blocking resume flows.
+    const latestLocal = readLatestLocalSnapshot();
+    if (latestLocal) {
+      applyPersistedState({
+        ...latestLocal,
+        employeeEmail: latestLocal.employeeEmail || normalizedEmail,
+        employeeName: latestLocal.employeeName || employeeName,
+        updatedAt: Date.now(),
+      });
+      return true;
+    }
+
     return false;
-  }, [applyPersistedState, employeeName, hasSnapshotContent, readLocalSnapshotForEmail]);
+  }, [applyPersistedState, employeeName, hasSnapshotContent, readLocalSnapshotForEmail, readLatestLocalSnapshot]);
 
   return {
     conversationId,
