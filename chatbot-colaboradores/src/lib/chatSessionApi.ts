@@ -176,6 +176,14 @@ const getSessionLookupBaseUrls = (): string[] => {
   return Array.from(new Set(urls));
 };
 
+const getSessionScore = (snapshot: PersistedChatState | null): number => {
+  if (!snapshot) return -1;
+  const messagesCount = Array.isArray(snapshot.messages) ? snapshot.messages.length : 0;
+  const hasReport = Boolean(snapshot.finalReport);
+  const updatedAt = typeof snapshot.updatedAt === "number" ? snapshot.updatedAt : 0;
+  return (messagesCount * 1_000_000) + (hasReport ? 1_000 : 0) + updatedAt;
+};
+
 export const hasSessionByEmail = async (email: string): Promise<boolean> => {
   const normalized = normalizeEmail(email);
   const baseUrls = getSessionLookupBaseUrls();
@@ -200,12 +208,19 @@ export const fetchSessionByEmail = async (email: string): Promise<PersistedChatS
     return null;
   }
 
+  let best: PersistedChatState | null = null;
+  let bestScore = -1;
+
   for (const baseUrl of baseUrls) {
     const snapshot = await fetchSessionSnapshot(baseUrl, normalized);
-    if (snapshot) return snapshot;
+    const score = getSessionScore(snapshot);
+    if (score > bestScore) {
+      best = snapshot;
+      bestScore = score;
+    }
   }
 
-  return null;
+  return best;
 };
 
 export const saveSessionByEmail = async (email: string, snapshot: PersistedChatState): Promise<void> => {
