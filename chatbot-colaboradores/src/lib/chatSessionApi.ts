@@ -76,9 +76,45 @@ const sessionHasMeaningfulContent = (snapshot: PersistedChatState): boolean => {
 
 const parseSessionSnapshot = (value: unknown): PersistedChatState | null => {
   if (!value || typeof value !== "object") return null;
-  const snapshot = value as PersistedChatState;
-  if (!Array.isArray(snapshot.messages)) return null;
-  return snapshot;
+
+  const unwrap = (input: unknown): Record<string, unknown> | null => {
+    if (!input || typeof input !== "object") return null;
+    const obj = input as Record<string, unknown>;
+
+    if (obj.snapshot && typeof obj.snapshot === "object") {
+      return obj.snapshot as Record<string, unknown>;
+    }
+
+    if (obj.session && typeof obj.session === "object") {
+      return obj.session as Record<string, unknown>;
+    }
+
+    return obj;
+  };
+
+  const raw = unwrap(value);
+  if (!raw) return null;
+
+  const messages = Array.isArray(raw.messages) ? raw.messages : [];
+  const finalReport = typeof raw.finalReport === "string"
+    ? raw.finalReport
+    : (typeof raw.report === "string" ? raw.report : "");
+
+  return {
+    conversationId: typeof raw.conversationId === "number" ? raw.conversationId : null,
+    messages: messages as PersistedChatState["messages"],
+    isEvaluationComplete: Boolean(raw.isEvaluationComplete),
+    employeeName: typeof raw.employeeName === "string" ? raw.employeeName : "",
+    employeeEmail: typeof raw.employeeEmail === "string" ? raw.employeeEmail : "",
+    currentStep: typeof raw.currentStep === "number" ? raw.currentStep : 0,
+    finalReport,
+    followUpCount: typeof raw.followUpCount === "number" ? raw.followUpCount : 0,
+    isInFollowUp: Boolean(raw.isInFollowUp),
+    signals: (raw.signals && typeof raw.signals === "object")
+      ? (raw.signals as PersistedChatState["signals"])
+      : { strengths: {}, opportunities: {} },
+    updatedAt: typeof raw.updatedAt === "number" ? raw.updatedAt : Date.now(),
+  };
 };
 
 const fetchSessionSnapshotFromAppsScript = async (baseUrl: string, email: string): Promise<PersistedChatState | null> => {
