@@ -256,7 +256,6 @@ export function ResultsScreen({ messages, onRestart, onBackToChat, profile, empl
         trainerName,
         assessmentId,
         title: deliverableTitle.trim(),
-          }, [assessmentId, employeeEmail, employeeName, trainerName, profile, recommendedResources]);
         summary: composedSummary,
         deliverableType,
         templateResponses: normalizedTemplateResponses,
