@@ -698,10 +698,10 @@ export function useChat() {
     if (!snapshot) return false;
 
     const parsedMessages = Array.isArray(snapshot.messages) ? snapshot.messages : [];
-    const hasUserMessages = parsedMessages.some((msg) => msg?.role === "user" && String(msg.content || "").trim().length > 0);
+    const hasAnyMessageContent = parsedMessages.some((msg) => String(msg?.content || "").trim().length > 0);
     const hasReport = Boolean(String(snapshot.finalReport || "").trim());
 
-    return hasUserMessages || hasReport;
+    return hasAnyMessageContent || hasReport;
   }, []);
 
   const getSnapshotResumeRank = useCallback((snapshot: PersistedChatState | null | undefined) => {

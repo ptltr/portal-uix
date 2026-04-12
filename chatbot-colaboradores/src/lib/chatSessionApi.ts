@@ -68,26 +68,61 @@ const normalizeEmail = (value: string): string => value.trim().toLowerCase();
 
 const isValidEmail = (value: string): boolean => /\S+@\S+\.\S+/.test(value.trim());
 
+const parseJsonIfString = (value: unknown): unknown => {
+  if (typeof value !== "string") return value;
+  const trimmed = value.trim();
+  if (!trimmed) return value;
+
+  try {
+    return JSON.parse(trimmed);
+  } catch {
+    return value;
+  }
+};
+
 const sessionHasMeaningfulContent = (snapshot: PersistedChatState): boolean => {
   // Only treat persisted history as resumable when it has actual conversation content.
   return (snapshot.messages || []).length > 0 || Boolean(snapshot.finalReport);
 };
 
 const parseSessionSnapshot = (value: unknown): PersistedChatState | null => {
-  if (!value || typeof value !== "object") return null;
+  const normalizedValue = parseJsonIfString(value);
+  if (!normalizedValue || typeof normalizedValue !== "object") return null;
 
   const unwrap = (input: unknown): Record<string, unknown> | null => {
-    if (!input || typeof input !== "object") return null;
-    const obj = input as Record<string, unknown>;
+    const parsedInput = parseJsonIfString(input);
+    if (!parsedInput || typeof parsedInput !== "object") return null;
+    const obj = parsedInput as Record<string, unknown>;
     if (obj.snapshot && typeof obj.snapshot === "object") return obj.snapshot as Record<string, unknown>;
     if (obj.session && typeof obj.session === "object") return obj.session as Record<string, unknown>;
+    if (obj.data && typeof obj.data === "object") return unwrap(obj.data);
+    if (obj.result && typeof obj.result === "object") return unwrap(obj.result);
     return obj;
   };
 
-  const raw = unwrap(value);
+  const raw = unwrap(normalizedValue);
   if (!raw) return null;
 
-  const messages = Array.isArray(raw.messages) ? raw.messages : [];
+  const rawMessages = parseJsonIfString(raw.messages);
+  const messages = Array.isArray(rawMessages)
+    ? rawMessages
+        .map((entry, index) => {
+          if (!entry || typeof entry !== "object") return null;
+          const msg = entry as Record<string, unknown>;
+          const roleRaw = String(msg.role || "assistant").toLowerCase();
+          const role = roleRaw === "user" || roleRaw === "assistant" || roleRaw === "system"
+            ? roleRaw
+            : "assistant";
+          const content = String(msg.content || "").trim();
+          if (!content) return null;
+          return {
+            id: String(msg.id || `restored-${Date.now()}-${index}`),
+            role,
+            content,
+          };
+        })
+        .filter((item): item is PersistedChatState["messages"][number] => Boolean(item))
+    : [];
   const finalReport = typeof raw.finalReport === "string"
     ? raw.finalReport
     : (typeof raw.report === "string" ? raw.report : "");
@@ -177,24 +212,14 @@ const pickBetterSession = (
 const fetchSessionSnapshotFromAppsScript = async (baseUrl: string, email: string): Promise<PersistedChatState | null> => {
   try {
     const response = await fetch(buildAppsScriptUrl(baseUrl, "getChatSession", { email }));
-    if (response.status === 404 || !response.ok) return null;
-    const parsed = parseSessionSnapshot(await response.json());
+    if (!response.ok) return null;
+    const body = await response.json() as Record<string, unknown>;
+    // Apps Script can return 200 with { ok:false, ... } for not-found/error cases.
+    if (body && typeof body === "object" && body.ok === false) return null;
+    const parsed = parseSessionSnapshot(body);
     return parsed && sessionHasMeaningfulContent(parsed) ? parsed : null;
   } catch {
     return null;
-  const fetchSessionSnapshotFromAppsScript = async (baseUrl: string, email: string): Promise<PersistedChatState | null> => {
-    try {
-      const response = await fetch(buildAppsScriptUrl(baseUrl, "getChatSession", { email }));
-      if (!response.ok) return null;
-      const body = await response.json() as Record<string, unknown>;
-      // Apps Script always returns HTTP 200; a {ok:false} body means "not found"
-      if (body && typeof body === "object" && body.ok === false) return null;
-      const parsed = parseSessionSnapshot(body);
-      return parsed && sessionHasMeaningfulContent(parsed) ? parsed : null;
-    } catch {
-      return null;
-    }
-  };
   }
 };
 
