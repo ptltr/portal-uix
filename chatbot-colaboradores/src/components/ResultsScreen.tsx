@@ -108,7 +108,7 @@ const mergeAssignedResourcesIntoReport = (reportContent: string, assignedResourc
 
   const current = parseRecommendedResourceTitles(reportContent);
   const hasInternalLinks = /Disponible internamente en UIX|Acércate con Capital Humano/i.test(reportContent);
-  const shouldReplaceResources = current.length < 5 || hasInternalLinks;
+  const shouldReplaceResources = assignedResources.length > 0 || current.length < 5 || hasInternalLinks;
   if (!shouldReplaceResources) return reportContent;
 
   const replacementBlock = `### Recursos recomendados\n${buildResourceSectionFromAssigned(assignedResources)}`;
@@ -241,13 +241,17 @@ export function ResultsScreen({ messages, onRestart, onBackToChat, profile, empl
   const [templateResponses, setTemplateResponses] = useState<string[]>(['', '', '']);
   const [evidenceUrls, setEvidenceUrls] = useState('');
   const [selectedResources, setSelectedResources] = useState<string[]>([]);
+  const resourcesFromProgress = progress?.assignedResources || [];
 
   const content = useMemo(
-    () => ensureCompetencySections(mergeAssignedResourcesIntoReport(rawContent, progress?.assignedResources || [])),
-    [rawContent, progress?.assignedResources]
+    () => ensureCompetencySections(mergeAssignedResourcesIntoReport(rawContent, resourcesFromProgress)),
+    [rawContent, resourcesFromProgress]
   );
 
-  const recommendedResources = useMemo(() => parseRecommendedResourceTitles(content), [content]);
+  const recommendedResources = useMemo(() => {
+    if (resourcesFromProgress.length > 0) return resourcesFromProgress;
+    return parseRecommendedResourceTitles(content);
+  }, [content, resourcesFromProgress]);
   const derivedProgress = useMemo(() => {
     const deliverables = progress?.deliverables || [];
     const maxCompletedFromDeliverables = deliverables.reduce((max, deliverable) => {
@@ -272,13 +276,18 @@ export function ResultsScreen({ messages, onRestart, onBackToChat, profile, empl
       if (!employeeEmail) return;
 
       try {
+        const existing = await getCollaboratorProgress(employeeEmail);
+        const resourcesToPersist = existing.assignedResources?.length
+          ? existing.assignedResources
+          : recommendedResources;
+
         await syncCollaboratorAssessment({
           collaboratorEmail: employeeEmail,
           collaboratorName: employeeName,
           trainerName,
           profile,
           assessmentId,
-          assignedResources: recommendedResources,
+          assignedResources: resourcesToPersist,
         });
         const result = await getCollaboratorProgress(employeeEmail);
         if (!isMounted) return;
