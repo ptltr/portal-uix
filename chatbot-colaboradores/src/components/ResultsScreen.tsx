@@ -153,7 +153,7 @@ const getVisibleDeliverableSummary = (deliverable: CollaboratorProgress['deliver
   return filteredLines.join('\n').trim();
 };
 
-export function ResultsScreen({ messages, onRestart, onBackToChat, profile, employeeName, employeeEmail, finalReport, assessmentId }: ResultsScreenProps) {
+export function ResultsScreen({ messages, onRestart, onBackToChat, profile, employeeName, employeeEmail, trainerName, finalReport, assessmentId }: ResultsScreenProps) {
   const rawContent = normalizeReportContent(finalReport || extractReportContent(messages));
   const [isGenerating, setIsGenerating] = useState(false);
   const [isSubmittingDeliverable, setIsSubmittingDeliverable] = useState(false);
@@ -196,7 +196,6 @@ export function ResultsScreen({ messages, onRestart, onBackToChat, profile, empl
       if (!employeeEmail) return;
 
       try {
-export function ResultsScreen({ messages, onRestart, onBackToChat, profile, employeeName, employeeEmail, trainerName, finalReport, assessmentId }: ResultsScreenProps) {
         await syncCollaboratorAssessment({
           collaboratorEmail: employeeEmail,
           collaboratorName: employeeName,
@@ -219,7 +218,7 @@ export function ResultsScreen({ messages, onRestart, onBackToChat, profile, empl
     return () => {
       isMounted = false;
     };
-  }, [assessmentId, employeeEmail, employeeName, profile, recommendedResources]);
+  }, [assessmentId, employeeEmail, employeeName, trainerName, profile, recommendedResources]);
 
   const handleDownload = async () => {
     setIsGenerating(true);
