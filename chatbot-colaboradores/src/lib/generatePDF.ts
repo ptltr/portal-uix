@@ -51,6 +51,116 @@ const PDF_FALLBACK_RECOMMENDATIONS: Recommendation[] = [
   },
 ];
 
+const normalizeTitle = (value: string): string => {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .trim();
+};
+
+const EXTERNAL_RECOMMENDATION_BY_TITLE: Record<string, Recommendation> = {
+  [normalizeTitle("Improving Communication Skills")]: {
+    name: "Improving Communication Skills",
+    type: "Curso en Coursera · opción gratuita",
+    why: "Refuerza comunicación clara, escucha y conversaciones difíciles con enfoque práctico.",
+    url: "https://www.coursera.org/learn/wharton-communication-skills",
+  },
+  [normalizeTitle("Work Smarter, Not Harder: Time Management")]: {
+    name: "Work Smarter, Not Harder: Time Management",
+    type: "Curso en Coursera · opción gratuita",
+    why: "Ayuda a priorizar mejor y sostener foco en semanas con alta carga de trabajo.",
+    url: "https://www.coursera.org/learn/work-smarter-not-harder",
+  },
+  [normalizeTitle("How to speak so that people want to listen")]: {
+    name: "How to speak so that people want to listen",
+    type: "Video en YouTube (TED) · gratis",
+    why: "Aporta técnicas concretas para comunicarte mejor en contextos profesionales.",
+    url: "https://www.youtube.com/watch?v=eIho2S0ZahI",
+  },
+  [normalizeTitle("Negotiation Skills")]: {
+    name: "Negotiation Skills",
+    type: "Curso en Coursera · opción gratuita",
+    why: "Fortalece negociación y manejo de desacuerdos con stakeholders y equipo.",
+    url: "https://www.coursera.org/learn/negotiation-skills",
+  },
+  [normalizeTitle("Creative Thinking: Techniques and Tools for Success")]: {
+    name: "Creative Thinking: Techniques and Tools for Success",
+    type: "Curso en Coursera · opción gratuita",
+    why: "Ofrece métodos concretos para generar ideas y convertirlas en acciones de valor.",
+    url: "https://www.coursera.org/learn/creative-thinking-techniques-and-tools-for-success",
+  },
+  [normalizeTitle("Fundamentals of Project Management")]: {
+    name: "Fundamentals of Project Management",
+    type: "Alison · curso gratuito",
+    why: "Fortalece planificación y seguimiento orientado a resultados medibles.",
+    url: "https://alison.com/course/fundamentals-of-project-management-revised-2017",
+  },
+  [normalizeTitle("Google Project Management Certificate")]: {
+    name: "Google Project Management Certificate",
+    type: "Curso de Google en Coursera · opción gratuita",
+    why: "Te ayuda a estructurar mejor aprendizaje, planificación y ejecución.",
+    url: "https://www.coursera.org/professional-certificates/google-project-management",
+  },
+  [normalizeTitle("Google Data Analytics Certificate")]: {
+    name: "Google Data Analytics Certificate",
+    type: "Curso de Google en Coursera · opción gratuita",
+    why: "Fortalece decisiones orientadas a resultados con uso práctico de datos.",
+    url: "https://www.coursera.org/professional-certificates/google-data-analytics",
+  },
+  [normalizeTitle("Introduction to Management Analysis and Strategies")]: {
+    name: "Introduction to Management Analysis and Strategies",
+    type: "Alison · curso gratuito",
+    why: "Refuerza liderazgo y coordinación para ejecutar planes de desarrollo.",
+    url: "https://alison.com/course/introduction-to-management-analysis-and-strategies",
+  },
+  [normalizeTitle("Teamwork Skills: Communicating Effectively in Groups")]: {
+    name: "Teamwork Skills: Communicating Effectively in Groups",
+    type: "Curso en Coursera · opción gratuita",
+    why: "Impulsa colaboración efectiva y comunicación en grupos de trabajo.",
+    url: "https://www.coursera.org/learn/teamwork-skills-effective-communication",
+  },
+};
+
+function sanitizeRecommendations(items: Recommendation[]): Recommendation[] {
+  return items.map((item, index) => {
+    const titleKey = normalizeTitle(item.name || "");
+    const mapped = EXTERNAL_RECOMMENDATION_BY_TITLE[titleKey];
+    const urlRaw = String(item.url || "").trim();
+    const looksInternal = /internamente|capital humano/i.test(urlRaw);
+    const hasExternalUrl = /^https?:\/\//i.test(urlRaw);
+
+    if (mapped) {
+      return {
+        name: item.name || mapped.name,
+        type: item.type || mapped.type,
+        why: item.why || mapped.why,
+        url: mapped.url,
+      };
+    }
+
+    if (hasExternalUrl) {
+      return item;
+    }
+
+    if (looksInternal || !urlRaw) {
+      const fallback = PDF_FALLBACK_RECOMMENDATIONS[index % PDF_FALLBACK_RECOMMENDATIONS.length];
+      const searchUrl = item.name
+        ? `https://www.google.com/search?q=${encodeURIComponent(item.name)}`
+        : fallback.url;
+
+      return {
+        name: item.name || fallback.name,
+        type: item.type || fallback.type,
+        why: item.why || fallback.why,
+        url: searchUrl,
+      };
+    }
+
+    return item;
+  });
+}
+
 function ensureFiveRecommendations(items: Recommendation[]): Recommendation[] {
   const seen = new Set<string>();
   const merged: Recommendation[] = [];
@@ -141,7 +251,7 @@ function parseReport(content: string): ParsedReport {
 export function generatePDF(content: string, profile: string, date: string) {
   const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
   const parsed = parseReport(content);
-  parsed.recommendations = ensureFiveRecommendations(parsed.recommendations);
+  parsed.recommendations = ensureFiveRecommendations(sanitizeRecommendations(parsed.recommendations));
 
   const W = 210;
   const margin = 18;
