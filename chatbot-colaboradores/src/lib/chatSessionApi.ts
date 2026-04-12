@@ -182,6 +182,19 @@ const fetchSessionSnapshotFromAppsScript = async (baseUrl: string, email: string
     return parsed && sessionHasMeaningfulContent(parsed) ? parsed : null;
   } catch {
     return null;
+  const fetchSessionSnapshotFromAppsScript = async (baseUrl: string, email: string): Promise<PersistedChatState | null> => {
+    try {
+      const response = await fetch(buildAppsScriptUrl(baseUrl, "getChatSession", { email }));
+      if (!response.ok) return null;
+      const body = await response.json() as Record<string, unknown>;
+      // Apps Script always returns HTTP 200; a {ok:false} body means "not found"
+      if (body && typeof body === "object" && body.ok === false) return null;
+      const parsed = parseSessionSnapshot(body);
+      return parsed && sessionHasMeaningfulContent(parsed) ? parsed : null;
+    } catch {
+      return null;
+    }
+  };
   }
 };
 

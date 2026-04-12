@@ -1440,8 +1440,13 @@ ${followUpEmailLine}
 
     try {
       const progress = await getCollaboratorProgress(normalizedEmail);
-      const hasProgressData = (progress.assignedResources?.length || 0) > 0 || (progress.deliverables?.length || 0) > 0;
-      if (!hasProgressData) return false;
+      const hasAnyProgress =
+        (progress.assignedResources?.length || 0) > 0 ||
+        (progress.deliverables?.length || 0) > 0 ||
+        (progress.completionPercentage || 0) > 0 ||
+        Boolean(progress.collaboratorName?.trim()) ||
+        Boolean(progress.latestAssessmentId?.trim());
+      if (!hasAnyProgress) return false;
 
       const report = buildRecoveredReportFromProgress({
         email: normalizedEmail,
