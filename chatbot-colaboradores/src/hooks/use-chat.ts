@@ -580,11 +580,38 @@ const buildRecoveredReportFromProgress = (args: {
   completionPercentage: number;
   deliverables: Array<{ title: string; summary: string; submittedAt: string }>;
 }): string => {
-  const resources = (args.assignedResources || []).slice(0, 5).map((title, index) => (
-    `**${index + 1}. ${title}**\n` +
-    `**Tipo:** Recurso recomendado UIX\n` +
-    `**Por qué te va a servir:** Recuperado desde tu seguimiento previo en Capital Humano.\n` +
-    `**Recurso:** Disponible en tu ruta de desarrollo UIX.`
+  const allResourceCatalog = Object.values(RESOURCE_BY_OPPORTUNITY);
+  const byLabel = new Map(
+    allResourceCatalog.map((resource) => [normalize(resource.label), resource]),
+  );
+
+  const fallbackExternal = allResourceCatalog
+    .filter((resource) => !/Disponible internamente en UIX/i.test(resource.url))
+    .slice(0, 5);
+
+  const selectedFromProgress = (args.assignedResources || [])
+    .map((title) => {
+      const matched = byLabel.get(normalize(title));
+      if (matched) return matched;
+
+      return {
+        label: title,
+        tipo: "Recurso abierto recomendado",
+        why: "Recuperado desde tu seguimiento previo para que puedas retomar tu plan sin perder contexto.",
+        url: `https://www.google.com/search?q=${encodeURIComponent(title)}`,
+        category: "curso" as const,
+      };
+    })
+    .filter(Boolean)
+    .slice(0, 5);
+
+  const recoveredResources = selectedFromProgress.length ? selectedFromProgress : fallbackExternal;
+
+  const resources = recoveredResources.map((resource, index) => (
+    `**${index + 1}. ${resource.label}**\n` +
+    `**Tipo:** ${resource.tipo}\n` +
+    `**Por qué te va a servir:** ${resource.why}\n` +
+    `**Recurso:** ${resource.url}`
   )).join("\n\n");
 
   const latestDeliverable = args.deliverables.length ? args.deliverables[args.deliverables.length - 1] : null;
@@ -592,7 +619,7 @@ const buildRecoveredReportFromProgress = (args: {
     ? `### Último entregable registrado\n- **Título:** ${latestDeliverable.title || "Sin título"}\n- **Fecha:** ${latestDeliverable.submittedAt ? new Date(latestDeliverable.submittedAt).toLocaleDateString("es-MX") : "Sin fecha"}\n- **Resumen:** ${latestDeliverable.summary || "Sin resumen"}`
     : "### Último entregable registrado\n- Aún no hay entregables registrados.";
 
-  return `---REPORTE_INICIO---\n## Tu plan de crecimiento personalizado (recuperado)\n\n### Estado recuperado\n- **Correo de seguimiento:** ${args.email}\n- **Colaborador:** ${args.name || "Colaborador"}\n- **Avance registrado:** ${args.completionPercentage}%\n\n### Recursos recomendados\n${resources || "Sin recursos recuperados."}\n\n${deliverableSection}\n---REPORTE_FIN---`;
+  return `---REPORTE_INICIO---\n## Tu plan de crecimiento personalizado (recuperado)\n\n### Estado recuperado\n- **Correo de seguimiento:** ${args.email}\n- **Colaborador:** ${args.name || "Colaborador"}\n- **Avance registrado:** ${args.completionPercentage}%\n\n### Tus fortalezas\n- **Compromiso con tu desarrollo:** Mantienes seguimiento activo de tu ruta de aprendizaje.\n- **Persistencia:** Ya tienes evidencia de avance y continuidad en tu proceso.\n- **Orientación a resultados:** Tu progreso y entregables muestran intención de aplicar lo aprendido.\n\n### Lo que más puedes potenciar\n- **Comunicación estratégica:** Compartir más claramente aprendizajes y resultados con tu equipo.\n- **Priorización y foco:** Planear bloques semanales para cerrar recursos pendientes.\n- **Aplicación práctica:** Convertir aprendizajes en acciones concretas y medibles en tus proyectos.\n\n### Recursos recomendados\n${resources || "Sin recursos recuperados."}\n\n${deliverableSection}\n---REPORTE_FIN---`;
 };
 
 const toResourceId = (resource: ResourceData): string => `${resource.label}|${resource.url}`;
