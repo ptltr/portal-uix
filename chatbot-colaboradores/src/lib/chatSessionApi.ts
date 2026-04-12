@@ -103,7 +103,13 @@ const parseSessionSnapshot = (value: unknown): PersistedChatState | null => {
   const raw = unwrap(normalizedValue);
   if (!raw) return null;
 
-  const rawMessages = parseJsonIfString(raw.messages);
+  const rawMessages = parseJsonIfString(
+    raw.messages
+    ?? raw.rawConversation
+    ?? raw.conversation
+    ?? raw.chatHistory
+    ?? raw.transcript
+  );
   const messages = Array.isArray(rawMessages)
     ? rawMessages
         .map((entry, index) => {

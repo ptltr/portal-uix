@@ -53,6 +53,42 @@ type PartialPersistedChatState = Partial<PersistedChatState> & {
 
 const CHAT_STORAGE_KEY = "uix-chat-session-v1";
 
+const normalizeIncomingMessages = (value: unknown): ChatMessage[] => {
+  const parseJsonIfString = (input: unknown): unknown => {
+    if (typeof input !== "string") return input;
+    const trimmed = input.trim();
+    if (!trimmed) return input;
+
+    try {
+      return JSON.parse(trimmed);
+    } catch {
+      return input;
+    }
+  };
+
+  const parsed = parseJsonIfString(value);
+  if (!Array.isArray(parsed)) return [];
+
+  return parsed
+    .map((entry, index) => {
+      if (!entry || typeof entry !== "object") return null;
+      const item = entry as Record<string, unknown>;
+      const rawRole = String(item.role || "assistant").toLowerCase();
+      const role: MessageRole = rawRole === "user" || rawRole === "assistant" || rawRole === "system"
+        ? rawRole
+        : "assistant";
+      const content = String(item.content || "").trim();
+      if (!content) return null;
+
+      return {
+        id: String(item.id || `restored-msg-${Date.now()}-${index}`),
+        role,
+        content,
+      };
+    })
+    .filter((msg): msg is ChatMessage => Boolean(msg));
+};
+
 const migrateLegacyReportContent = (report: string): string => {
   if (!report) return report;
 
@@ -632,7 +668,7 @@ export function useChat() {
   const signalsRef = useRef<SignalState>({ strengths: {}, opportunities: {} });
 
   const applyPersistedState = useCallback((parsed: PersistedChatState) => {
-    const parsedMessages = Array.isArray(parsed.messages) ? parsed.messages : [];
+    const parsedMessages = normalizeIncomingMessages(parsed.messages);
     const normalizedReport = migrateLegacyReportContent(parsed.finalReport || "");
     const hasReport = Boolean(normalizedReport.trim());
     const hasMeaningfulContent = parsedMessages.length > 0 || hasReport;
@@ -685,7 +721,7 @@ export function useChat() {
   const hasSnapshotContent = useCallback((snapshot: PersistedChatState | null | undefined): boolean => {
     if (!snapshot) return false;
 
-    const parsedMessages = Array.isArray(snapshot.messages) ? snapshot.messages : [];
+    const parsedMessages = normalizeIncomingMessages(snapshot.messages);
     const normalizedReport = snapshot.finalReport || "";
 
     return (
@@ -697,7 +733,7 @@ export function useChat() {
   const isResumeUsableSnapshot = useCallback((snapshot: PersistedChatState | null | undefined): boolean => {
     if (!snapshot) return false;
 
-    const parsedMessages = Array.isArray(snapshot.messages) ? snapshot.messages : [];
+    const parsedMessages = normalizeIncomingMessages(snapshot.messages);
     const hasAnyMessageContent = parsedMessages.some((msg) => String(msg?.content || "").trim().length > 0);
     const hasReport = Boolean(String(snapshot.finalReport || "").trim());
 
@@ -709,9 +745,9 @@ export function useChat() {
       return { userMessagesCount: -1, hasReport: 0, updatedAt: 0 };
     }
 
-    const userMessagesCount = Array.isArray(snapshot.messages)
-      ? snapshot.messages.filter((msg) => msg?.role === "user" && String(msg.content || "").trim().length > 0).length
-      : 0;
+    const userMessagesCount = normalizeIncomingMessages(snapshot.messages)
+      .filter((msg) => msg.role === "user" && String(msg.content || "").trim().length > 0)
+      .length;
 
     return {
       userMessagesCount,
@@ -755,7 +791,7 @@ export function useChat() {
 
       const normalized: PersistedChatState = {
         conversationId: typeof parsed.conversationId === "number" ? parsed.conversationId : null,
-        messages: Array.isArray(parsed.messages) ? parsed.messages : [],
+        messages: normalizeIncomingMessages(parsed.messages),
         isEvaluationComplete: Boolean(parsed.isEvaluationComplete),
         employeeName: String(parsed.employeeName || ""),
         employeeEmail: storedEmail,
@@ -788,7 +824,7 @@ export function useChat() {
       const parsed = JSON.parse(raw) as PartialPersistedChatState;
       const normalized: PersistedChatState = {
         conversationId: typeof parsed.conversationId === "number" ? parsed.conversationId : null,
-        messages: Array.isArray(parsed.messages) ? parsed.messages : [],
+        messages: normalizeIncomingMessages(parsed.messages),
         isEvaluationComplete: Boolean(parsed.isEvaluationComplete),
         employeeName: String(parsed.employeeName || ""),
         employeeEmail: String(parsed.employeeEmail || "").trim().toLowerCase(),
