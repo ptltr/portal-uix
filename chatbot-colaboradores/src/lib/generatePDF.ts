@@ -44,10 +44,10 @@ const PDF_FALLBACK_RECOMMENDATIONS: Recommendation[] = [
     url: "https://alison.com/course/fundamentals-of-project-management-revised-2017",
   },
   {
-    name: "Taller interno de Trabajo en Equipo",
-    type: "Taller UIX · gratuito",
-    why: "Impulsa colaboración efectiva y coordinación entre perfiles de trabajo.",
-    url: "Disponible internamente en UIX. Acércate con Capital Humano para más información.",
+    name: "Introduction to Management Analysis and Strategies",
+    type: "Alison · curso gratuito",
+    why: "Fortalece liderazgo, organización y seguimiento para ejecutar mejor planes de desarrollo.",
+    url: "https://alison.com/course/introduction-to-management-analysis-and-strategies",
   },
 ];
 
