@@ -80,19 +80,85 @@ const EXTERNAL_RESOURCE_FALLBACK = [
   },
 ] as const;
 
+const normalizeTitle = (value: string): string => {
+  return value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim();
+};
+
+const EXTERNAL_RESOURCE_BY_TITLE: Record<string, { type: string; why: string; url: string }> = {
+  [normalizeTitle('Improving Communication Skills')]: {
+    type: 'Curso en Coursera · opción gratuita',
+    why: 'Fortalece tu comunicación verbal y escrita para conversaciones de trabajo más claras.',
+    url: 'https://www.coursera.org/learn/wharton-communication-skills',
+  },
+  [normalizeTitle('Work Smarter, Not Harder: Time Management')]: {
+    type: 'Curso en Coursera · opción gratuita',
+    why: 'Ayuda a priorizar mejor y sostener foco durante semanas con alta carga.',
+    url: 'https://www.coursera.org/learn/work-smarter-not-harder',
+  },
+  [normalizeTitle('How to speak so that people want to listen')]: {
+    type: 'Video en YouTube (TED) · gratis',
+    why: 'Brinda técnicas prácticas de comunicación aplicables al trabajo diario.',
+    url: 'https://www.youtube.com/watch?v=eIho2S0ZahI',
+  },
+  [normalizeTitle('Negotiation Skills')]: {
+    type: 'Curso en Coursera · opción gratuita',
+    why: 'Te ayuda a resolver desacuerdos y negociar mejor con equipo y stakeholders.',
+    url: 'https://www.coursera.org/learn/negotiation-skills',
+  },
+  [normalizeTitle('Creative Thinking: Techniques and Tools for Success')]: {
+    type: 'Curso en Coursera · opción gratuita',
+    why: 'Aporta técnicas concretas para generar ideas y transformarlas en acciones.',
+    url: 'https://www.coursera.org/learn/creative-thinking-techniques-and-tools-for-success',
+  },
+  [normalizeTitle('Fundamentals of Project Management')]: {
+    type: 'Alison · curso gratuito',
+    why: 'Refuerza organización, seguimiento y ejecución orientada a resultados.',
+    url: 'https://alison.com/course/fundamentals-of-project-management-revised-2017',
+  },
+  [normalizeTitle('Google Project Management Certificate')]: {
+    type: 'Curso de Google en Coursera · opción gratuita',
+    why: 'Te ayuda a estructurar mejor planificación y ejecución de proyectos.',
+    url: 'https://www.coursera.org/professional-certificates/google-project-management',
+  },
+  [normalizeTitle('Google Data Analytics Certificate')]: {
+    type: 'Curso de Google en Coursera · opción gratuita',
+    why: 'Fortalece análisis y toma de decisiones con base en datos.',
+    url: 'https://www.coursera.org/professional-certificates/google-data-analytics',
+  },
+  [normalizeTitle('Introduction to Management Analysis and Strategies')]: {
+    type: 'Alison · curso gratuito',
+    why: 'Fortalece liderazgo práctico y coordinación de planes de desarrollo.',
+    url: 'https://alison.com/course/introduction-to-management-analysis-and-strategies',
+  },
+  [normalizeTitle('Teamwork Skills: Communicating Effectively in Groups')]: {
+    type: 'Curso en Coursera · opción gratuita',
+    why: 'Refuerza colaboración y comunicación efectiva en equipos multidisciplinarios.',
+    url: 'https://www.coursera.org/learn/teamwork-skills-effective-communication',
+  },
+};
+
+const getExternalResourceMetaByTitle = (title: string, index: number) => {
+  const known = EXTERNAL_RESOURCE_BY_TITLE[normalizeTitle(title)];
+  if (known) return { title, ...known };
+
+  const fallback = EXTERNAL_RESOURCE_FALLBACK[index % EXTERNAL_RESOURCE_FALLBACK.length];
+  return {
+    title,
+    type: fallback.type,
+    why: fallback.why,
+    url: `https://www.google.com/search?q=${encodeURIComponent(title)}`,
+  };
+};
+
 const buildResourceSectionFromAssigned = (assignedResources: string[]): string => {
   const source = assignedResources.slice(0, 5);
 
   const resolved = source.length
-    ? source.map((title, index) => {
-      const fallback = EXTERNAL_RESOURCE_FALLBACK[index % EXTERNAL_RESOURCE_FALLBACK.length];
-      return {
-        title,
-        type: fallback.type,
-        why: fallback.why,
-        url: fallback.url,
-      };
-    })
+    ? source.map((title, index) => getExternalResourceMetaByTitle(title, index))
     : EXTERNAL_RESOURCE_FALLBACK;
 
   return resolved.slice(0, 5).map((item, index) => (
@@ -112,7 +178,7 @@ const mergeAssignedResourcesIntoReport = (reportContent: string, assignedResourc
   if (!shouldReplaceResources) return reportContent;
 
   const replacementBlock = `### Recursos recomendados\n${buildResourceSectionFromAssigned(assignedResources)}`;
-  const resourcesSectionPattern = /### Recursos recomendados[\s\S]*?(?=\n###\s|\n---REPORTE_FIN---|$)/;
+  const resourcesSectionPattern = /###\s+(Recursos recomendados|Tus 5 recursos de desarrollo|Recursos de desarrollo)[\s\S]*?(?=\n###\s|\n---REPORTE_FIN---|$)/i;
 
   if (resourcesSectionPattern.test(reportContent)) {
     return reportContent.replace(resourcesSectionPattern, replacementBlock);
