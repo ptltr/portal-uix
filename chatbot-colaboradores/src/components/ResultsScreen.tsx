@@ -47,20 +47,69 @@ const parseRecommendedResourceTitles = (content: string): string[] => {
   return matches.map((match) => match[1].trim());
 };
 
+const EXTERNAL_RESOURCE_FALLBACK = [
+  {
+    title: 'Improving Communication Skills',
+    type: 'Curso en Coursera · opción gratuita',
+    why: 'Mejora la claridad para conversaciones profesionales y coordinación con equipo.',
+    url: 'https://www.coursera.org/learn/wharton-communication-skills',
+  },
+  {
+    title: 'Work Smarter, Not Harder: Time Management',
+    type: 'Curso en Coursera · opción gratuita',
+    why: 'Ayuda a priorizar mejor y sostener foco durante semanas de alta carga.',
+    url: 'https://www.coursera.org/learn/work-smarter-not-harder',
+  },
+  {
+    title: 'How to speak so that people want to listen',
+    type: 'Video en YouTube (TED) · gratis',
+    why: 'Brinda técnicas prácticas de comunicación aplicables al trabajo diario.',
+    url: 'https://www.youtube.com/watch?v=eIho2S0ZahI',
+  },
+  {
+    title: 'Fundamentals of Project Management',
+    type: 'Alison · curso gratuito',
+    why: 'Refuerza organización, seguimiento y ejecución orientada a resultados.',
+    url: 'https://alison.com/course/fundamentals-of-project-management-revised-2017',
+  },
+  {
+    title: 'Introduction to Management Analysis and Strategies',
+    type: 'Alison · curso gratuito',
+    why: 'Fortalece liderazgo práctico y coordinación de planes de desarrollo.',
+    url: 'https://alison.com/course/introduction-to-management-analysis-and-strategies',
+  },
+] as const;
+
 const buildResourceSectionFromAssigned = (assignedResources: string[]): string => {
-  return assignedResources.slice(0, 5).map((title, index) => (
-    `**${index + 1}. ${title}**\n` +
-    `**Tipo:** Recurso recomendado UIX\n` +
-    `**Por qué te va a servir:** Seleccionado para reforzar tu plan de desarrollo según tus resultados y objetivos de crecimiento.\n` +
-    `**Recurso:** Disponible en tu ruta de desarrollo UIX. Acércate con Capital Humano para más información.`
+  const source = assignedResources.slice(0, 5);
+
+  const resolved = source.length
+    ? source.map((title, index) => {
+      const fallback = EXTERNAL_RESOURCE_FALLBACK[index % EXTERNAL_RESOURCE_FALLBACK.length];
+      return {
+        title,
+        type: fallback.type,
+        why: fallback.why,
+        url: fallback.url,
+      };
+    })
+    : EXTERNAL_RESOURCE_FALLBACK;
+
+  return resolved.slice(0, 5).map((item, index) => (
+    `**${index + 1}. ${item.title}**\n` +
+    `**Tipo:** ${item.type}\n` +
+    `**Por qué te va a servir:** ${item.why}\n` +
+    `**Recurso:** ${item.url}`
   )).join('\n\n');
 };
 
 const mergeAssignedResourcesIntoReport = (reportContent: string, assignedResources: string[]): string => {
-  if (!reportContent || assignedResources.length < 5) return reportContent;
+  if (!reportContent) return reportContent;
 
   const current = parseRecommendedResourceTitles(reportContent);
-  if (current.length >= 5) return reportContent;
+  const hasInternalLinks = /Disponible internamente en UIX|Acércate con Capital Humano/i.test(reportContent);
+  const shouldReplaceResources = current.length < 5 || hasInternalLinks;
+  if (!shouldReplaceResources) return reportContent;
 
   const replacementBlock = `### Recursos recomendados\n${buildResourceSectionFromAssigned(assignedResources)}`;
   const resourcesSectionPattern = /### Recursos recomendados[\s\S]*?(?=\n###\s|\n---REPORTE_FIN---|$)/;
@@ -70,6 +119,33 @@ const mergeAssignedResourcesIntoReport = (reportContent: string, assignedResourc
   }
 
   return `${reportContent}\n\n${replacementBlock}`;
+};
+
+const ensureCompetencySections = (reportContent: string): string => {
+  if (!reportContent) return reportContent;
+
+  const hasStrengths = /###\s+Tus fortalezas/i.test(reportContent);
+  const hasOpportunities = /###\s+Lo que más puedes potenciar/i.test(reportContent);
+  if (hasStrengths && hasOpportunities) return reportContent;
+
+  const defaultSections = [
+    '### Tus fortalezas',
+    '- **Compromiso con tu desarrollo:** Mantienes seguimiento activo de tu ruta de aprendizaje.',
+    '- **Persistencia:** Ya cuentas con evidencias de avance en tu plan.',
+    '- **Orientación a resultados:** Das seguimiento a lo aprendido con foco en aplicación.',
+    '',
+    '### Lo que más puedes potenciar',
+    '- **Comunicación estratégica:** Compartir de forma más clara aprendizajes y resultados.',
+    '- **Priorización y foco:** Definir bloques semanales para cerrar recursos pendientes.',
+    '- **Aplicación práctica:** Traducir aprendizajes en acciones concretas y medibles.',
+  ].join('\n');
+
+  const insertionPoint = reportContent.search(/###\s+Recursos recomendados/i);
+  if (insertionPoint >= 0) {
+    return `${reportContent.slice(0, insertionPoint).trim()}\n\n${defaultSections}\n\n${reportContent.slice(insertionPoint).trim()}`;
+  }
+
+  return `${reportContent.trim()}\n\n${defaultSections}`;
 };
 
 const statusMeta: Record<CollaboratorProgress['status'], { label: string; tone: string }> = {
@@ -167,7 +243,7 @@ export function ResultsScreen({ messages, onRestart, onBackToChat, profile, empl
   const [selectedResources, setSelectedResources] = useState<string[]>([]);
 
   const content = useMemo(
-    () => mergeAssignedResourcesIntoReport(rawContent, progress?.assignedResources || []),
+    () => ensureCompetencySections(mergeAssignedResourcesIntoReport(rawContent, progress?.assignedResources || [])),
     [rawContent, progress?.assignedResources]
   );
 
