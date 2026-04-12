@@ -39,6 +39,7 @@ export interface PersistedChatState {
   isEvaluationComplete: boolean;
   employeeName: string;
   employeeEmail: string;
+  trainerName: string;
   currentStep: number;
   finalReport: string;
   followUpCount: number;
@@ -655,6 +656,7 @@ export function useChat() {
   const [isEvaluationComplete, setIsEvaluationComplete] = useState(false);
   const [employeeName, setEmployeeName] = useState("");
   const [employeeEmail, setEmployeeEmail] = useState("");
+  const [trainerName, setTrainerName] = useState("");
 
   const [currentStep, setCurrentStep] = useState(0);
   const [finalReport, setFinalReport] = useState("");
@@ -687,6 +689,7 @@ export function useChat() {
     setIsEvaluationComplete(hasMeaningfulContent && (Boolean(parsed.isEvaluationComplete) || hasReport));
     setEmployeeName(parsed.employeeName || "");
     setEmployeeEmail(parsed.employeeEmail || "");
+    setTrainerName(parsed.trainerName || "");
     setCurrentStep(hasMeaningfulContent && typeof parsed.currentStep === "number" ? parsed.currentStep : 0);
     setFinalReport(normalizedReport);
     setFollowUpCount(hasMeaningfulContent && typeof parsed.followUpCount === "number" ? parsed.followUpCount : 0);
@@ -709,6 +712,7 @@ export function useChat() {
       isEvaluationComplete,
       employeeName,
       employeeEmail,
+      trainerName,
       currentStep,
       finalReport,
       followUpCount,
@@ -716,7 +720,7 @@ export function useChat() {
       signals: signalsRef.current,
       updatedAt: Date.now(),
     };
-  }, [conversationId, messages, isEvaluationComplete, employeeName, employeeEmail, currentStep, finalReport, followUpCount, isInFollowUp]);
+  }, [conversationId, messages, isEvaluationComplete, employeeName, employeeEmail, trainerName, currentStep, finalReport, followUpCount, isInFollowUp]);
 
   const hasSnapshotContent = useCallback((snapshot: PersistedChatState | null | undefined): boolean => {
     if (!snapshot) return false;
@@ -795,6 +799,7 @@ export function useChat() {
         isEvaluationComplete: Boolean(parsed.isEvaluationComplete),
         employeeName: String(parsed.employeeName || ""),
         employeeEmail: storedEmail,
+        trainerName: String(parsed.trainerName || ""),
         currentStep: typeof parsed.currentStep === "number" ? parsed.currentStep : 0,
         finalReport: String(parsed.finalReport || parsed.report || ""),
         followUpCount: typeof parsed.followUpCount === "number" ? parsed.followUpCount : 0,
@@ -828,6 +833,7 @@ export function useChat() {
         isEvaluationComplete: Boolean(parsed.isEvaluationComplete),
         employeeName: String(parsed.employeeName || ""),
         employeeEmail: String(parsed.employeeEmail || "").trim().toLowerCase(),
+        trainerName: String(parsed.trainerName || ""),
         currentStep: typeof parsed.currentStep === "number" ? parsed.currentStep : 0,
         finalReport: String(parsed.finalReport || parsed.report || ""),
         followUpCount: typeof parsed.followUpCount === "number" ? parsed.followUpCount : 0,
@@ -931,13 +937,14 @@ export function useChat() {
     void syncCollaboratorAssessment({
       collaboratorEmail: employeeEmail,
       collaboratorName: employeeName,
+      trainerName,
       profile: "",
       assessmentId: conversationId ? String(conversationId) : undefined,
       assignedResources,
     }).catch(() => {
       // Ignore sync errors here; user can retry from results screen.
     });
-  }, [conversationId, employeeEmail, employeeName, finalReport, isEvaluationComplete]);
+  }, [conversationId, employeeEmail, employeeName, trainerName, finalReport, isEvaluationComplete]);
 
   const addSignal = (type: keyof SignalState, key: string, points = 1) => {
     const bucket = signalsRef.current[type];
@@ -1370,6 +1377,7 @@ ${followUpEmailLine}
           void syncCollaboratorAssessment({
             collaboratorEmail: employeeEmail,
             collaboratorName: employeeName,
+            trainerName,
             profile: "",
             assessmentId: _currentConvId ? String(_currentConvId) : undefined,
             assignedResources,
@@ -1416,7 +1424,7 @@ ${followUpEmailLine}
         }
       }, 18);
     }, 700);
-  }, [buildPersonalizedReport, currentStep, employeeName, generateContextualResponse]);
+  }, [buildPersonalizedReport, currentStep, employeeName, trainerName, generateContextualResponse]);
 
   const resetChat = useCallback(() => {
     setConversationId(null);
@@ -1429,6 +1437,7 @@ ${followUpEmailLine}
     setFinalReport("");
     setEmployeeName("");
     setEmployeeEmail("");
+    setTrainerName("");
     signalsRef.current = { strengths: {}, opportunities: {} };
     try {
       localStorage.removeItem(CHAT_STORAGE_KEY);
@@ -1506,6 +1515,7 @@ ${followUpEmailLine}
         isEvaluationComplete: true,
         employeeName: progress.collaboratorName || fallbackName || "",
         employeeEmail: normalizedEmail,
+        trainerName: progress.trainerName || "",
         currentStep: STEPS.length,
         finalReport: report,
         followUpCount: 0,
@@ -1532,6 +1542,8 @@ ${followUpEmailLine}
     setEmployeeName,
     employeeEmail,
     setEmployeeEmail,
+    trainerName,
+    setTrainerName,
     finalReport,
     checkSessionForEmail,
     loadSessionForEmail,

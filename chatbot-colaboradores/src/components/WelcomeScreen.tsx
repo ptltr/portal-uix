@@ -9,11 +9,12 @@ interface ResumeSessionPayload {
   userName: string;
   userEmail: string;
   profile: string;
+  trainerName: string;
   source: 'local' | 'reminder' | 'remote';
 }
 
 interface WelcomeScreenProps {
-  onStart: (conversationId: number, profile: string, level: string, userName: string, userEmail: string) => void;
+  onStart: (conversationId: number, profile: string, level: string, userName: string, userEmail: string, trainerName: string) => void;
   hasSavedSession?: boolean;
   onResumeSession?: (payload?: ResumeSessionPayload) => Promise<boolean> | boolean;
   onStartFresh?: () => void;
@@ -73,6 +74,7 @@ export function WelcomeScreen({
   const [selectedProfile, setSelectedProfile] = useState<string>('');
   const [userName, setUserName] = useState<string>(initialUserName);
   const [userEmail, setUserEmail] = useState<string>(initialUserEmail);
+  const [trainerName, setTrainerName] = useState<string>('');
   const [hasSavedSessionForEmail, setHasSavedSessionForEmail] = useState(false);
   const [hasRemoteSessionForEmail, setHasRemoteSessionForEmail] = useState(false);
   const [isCheckingRemoteSession, setIsCheckingRemoteSession] = useState(false);
@@ -93,7 +95,7 @@ export function WelcomeScreen({
       };
     },
     onSuccess: (data) => {
-      onStart(data.id, selectedProfile, 'Auto', userName.trim(), userEmail.trim());
+      onStart(data.id, selectedProfile, 'Auto', userName.trim(), userEmail.trim(), trainerName.trim());
     },
   });
 
@@ -113,7 +115,7 @@ export function WelcomeScreen({
     setSelectedProfile(subLabel);
   };
 
-  const canStart = selectedProfile !== '' && userName.trim().length > 0 && isValidEmail(userEmail);
+  const canStart = selectedProfile !== '' && userName.trim().length > 0 && trainerName.trim().length > 0 && isValidEmail(userEmail);
   const hasReminderResumeCandidate = !ignoreReminderResume
     && resumeFromReminderLink
     && Boolean(normalizeEmail(initialUserEmail))
@@ -191,6 +193,7 @@ export function WelcomeScreen({
     if (!preserveInputs) {
       setUserName('');
       setUserEmail('');
+      setTrainerName('');
     }
     setExpandedGroup(null);
     setHasSavedSessionForEmail(false);
@@ -225,7 +228,10 @@ export function WelcomeScreen({
           animate={{ opacity: 1, y: 0 }}
           className="flex flex-col items-center mb-8 text-center"
         >
-          <div className="w-full flex justify-end mb-4">
+          <div className="w-full flex justify-end gap-2 mb-4">
+            <Link href="/formador" className="inline-flex items-center gap-2 px-3 py-2 rounded-xl glass-card border border-white/10 text-xs font-medium text-foreground hover:border-primary/40 transition-colors">
+              <span>Vista Formador</span>
+            </Link>
             <Link href="/capital-humano" className="inline-flex items-center gap-2 px-3 py-2 rounded-xl glass-card border border-white/10 text-xs font-medium text-foreground hover:border-primary/40 transition-colors">
               <span>Vista Capital Humano</span>
             </Link>
@@ -338,6 +344,20 @@ export function WelcomeScreen({
                 )}
               </div>
 
+              <div>
+                <label className="block text-sm font-medium text-foreground mb-1">Nombre de tu formador</label>
+                <input
+                  type="text"
+                  value={trainerName}
+                  onChange={(e) => setTrainerName(e.target.value)}
+                  placeholder="Ej. Ana Pérez"
+                  className="w-full rounded-xl border border-white/10 bg-transparent px-3.5 py-2 text-sm text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                />
+                {trainerName.trim().length === 0 && (
+                  <p className="mt-1 text-xs text-muted-foreground">Este dato ayuda a que tu plan aparezca en la vista de equipo del formador.</p>
+                )}
+              </div>
+
               {showResumeOptionsInProfile && (
                 <div className="space-y-2 rounded-2xl border border-secondary/25 bg-secondary/10 p-3.5">
                   <p className="text-xs text-secondary font-medium">
@@ -361,6 +381,7 @@ export function WelcomeScreen({
                           userName: userName.trim(),
                           userEmail: userEmail.trim(),
                           profile: selectedProfile || 'UX/UI Designer',
+                          trainerName: trainerName.trim(),
                           source: hasRemoteSessionForEmail
                               ? 'remote'
                               : 'local',

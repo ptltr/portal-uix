@@ -8,6 +8,7 @@ export interface DeliverableTemplateResponse {
 export interface DeliverablePayload {
   collaboratorEmail: string;
   collaboratorName?: string;
+  trainerName?: string;
   assessmentId?: string;
   title: string;
   summary: string;
@@ -25,6 +26,7 @@ export interface DeliverableRecord extends DeliverablePayload {
 export interface CollaboratorProgress {
   collaboratorEmail: string;
   collaboratorName?: string;
+  trainerName?: string;
   profile?: string;
   latestAssessmentId?: string;
   assignedResources: string[];
@@ -39,6 +41,7 @@ export interface CollaboratorProgress {
 export interface SyncCollaboratorAssessmentPayload {
   collaboratorEmail: string;
   collaboratorName?: string;
+  trainerName?: string;
   profile?: string;
   assessmentId?: string;
   assignedResources: string[];
@@ -353,6 +356,7 @@ const buildProgressStatus = (percentage: number): CollaboratorProgress["status"]
 const createEmptyProgress = (email: string): CollaboratorProgress => ({
   collaboratorEmail: email,
   collaboratorName: "",
+  trainerName: "",
   profile: "",
   latestAssessmentId: "",
   assignedResources: [],
@@ -448,6 +452,7 @@ const normalizeProgressRecord = (value: unknown): CollaboratorProgress | null =>
   return {
     collaboratorEmail,
     collaboratorName: typeof raw.collaboratorName === "string" ? raw.collaboratorName : "",
+    trainerName: typeof raw.trainerName === "string" ? raw.trainerName : "",
     profile: typeof raw.profile === "string" ? raw.profile : "",
     latestAssessmentId: typeof raw.latestAssessmentId === "string" ? raw.latestAssessmentId : "",
     assignedResources,
@@ -488,6 +493,7 @@ const mergeProgressLists = (
     merged[remote.collaboratorEmail] = {
       ...base,
       collaboratorName: base.collaboratorName || fallback.collaboratorName,
+      trainerName: base.trainerName || fallback.trainerName,
       profile: base.profile || fallback.profile,
       latestAssessmentId: base.latestAssessmentId || fallback.latestAssessmentId,
       assignedResources: base.assignedResources.length ? base.assignedResources : fallback.assignedResources,
@@ -530,6 +536,7 @@ const mergeProgressRecordPair = (
   return {
     ...primary,
     collaboratorName: primary.collaboratorName || secondary.collaboratorName,
+    trainerName: primary.trainerName || secondary.trainerName,
     profile: primary.profile || secondary.profile,
     latestAssessmentId: primary.latestAssessmentId || secondary.latestAssessmentId,
     assignedResources: primary.assignedResources.length ? primary.assignedResources : secondary.assignedResources,
@@ -557,6 +564,7 @@ const upsertLocalAssessment = (payload: SyncCollaboratorAssessmentPayload): Coll
     ...existing,
     collaboratorEmail: email,
     collaboratorName: payload.collaboratorName || existing.collaboratorName,
+    trainerName: payload.trainerName || existing.trainerName,
     profile: payload.profile || existing.profile,
     latestAssessmentId: payload.assessmentId || existing.latestAssessmentId,
     assignedResources: payload.assignedResources.length ? payload.assignedResources : existing.assignedResources,
@@ -596,6 +604,7 @@ const upsertLocalDeliverable = (payload: DeliverablePayload): DeliverableRecord 
     ...existing,
     collaboratorEmail: email,
     collaboratorName: payload.collaboratorName || existing.collaboratorName,
+    trainerName: payload.trainerName || existing.trainerName,
     latestAssessmentId: payload.assessmentId || existing.latestAssessmentId,
     completedResourcesCount,
     totalResourcesCount,

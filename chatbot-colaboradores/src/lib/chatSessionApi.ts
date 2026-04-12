@@ -139,6 +139,7 @@ const parseSessionSnapshot = (value: unknown): PersistedChatState | null => {
     isEvaluationComplete: Boolean(raw.isEvaluationComplete),
     employeeName: typeof raw.employeeName === "string" ? raw.employeeName : "",
     employeeEmail: typeof raw.employeeEmail === "string" ? raw.employeeEmail : "",
+    trainerName: typeof raw.trainerName === "string" ? raw.trainerName : "",
     currentStep: typeof raw.currentStep === "number" ? raw.currentStep : 0,
     finalReport,
     followUpCount: typeof raw.followUpCount === "number" ? raw.followUpCount : 0,

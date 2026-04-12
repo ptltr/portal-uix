@@ -16,6 +16,7 @@ interface ResultsScreenProps {
   level: string;
   employeeName: string;
   employeeEmail: string;
+  trainerName: string;
   finalReport: string;
   assessmentId?: string;
 }
@@ -195,9 +196,11 @@ export function ResultsScreen({ messages, onRestart, onBackToChat, profile, empl
       if (!employeeEmail) return;
 
       try {
+export function ResultsScreen({ messages, onRestart, onBackToChat, profile, employeeName, employeeEmail, trainerName, finalReport, assessmentId }: ResultsScreenProps) {
         await syncCollaboratorAssessment({
           collaboratorEmail: employeeEmail,
           collaboratorName: employeeName,
+          trainerName,
           profile,
           assessmentId,
           assignedResources: recommendedResources,
@@ -251,8 +254,10 @@ export function ResultsScreen({ messages, onRestart, onBackToChat, profile, empl
       await uploadDeliverable({
         collaboratorEmail: employeeEmail,
         collaboratorName: employeeName,
+        trainerName,
         assessmentId,
         title: deliverableTitle.trim(),
+          }, [assessmentId, employeeEmail, employeeName, trainerName, profile, recommendedResources]);
         summary: composedSummary,
         deliverableType,
         templateResponses: normalizedTemplateResponses,

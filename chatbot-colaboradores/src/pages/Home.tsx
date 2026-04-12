@@ -69,6 +69,8 @@ export default function Home() {
     employeeEmail,
     setEmployeeName,
     setEmployeeEmail,
+    trainerName,
+    setTrainerName,
     finalReport,
     checkSessionForEmail,
     loadSessionForEmail,
@@ -114,12 +116,13 @@ export default function Home() {
     }
   }, [phase, conversationId, messages.length, finalReport]);
 
-  const handleStart = (id: number, profile: string, level: string, userName: string, userEmail: string) => {
+  const handleStart = (id: number, profile: string, level: string, userName: string, userEmail: string, userTrainerName: string) => {
     setConversationId(id);
     setSelectedProfile(profile);
     setSelectedLevel(level);
     setEmployeeName(userName);
     setEmployeeEmail(userEmail);
+    setTrainerName(userTrainerName);
     setPhase('chat');
   };
 
@@ -135,13 +138,15 @@ export default function Home() {
     setPhase('welcome');
   };
 
-  const handleResumeSession = async (payload?: { userName: string; userEmail: string; profile: string; source: 'local' | 'reminder' | 'remote' }) => {
+  const handleResumeSession = async (payload?: { userName: string; userEmail: string; profile: string; trainerName: string; source: 'local' | 'reminder' | 'remote' }) => {
     if (payload) {
       const resolvedEmail = (payload.userEmail || employeeEmail).trim();
       const resolvedName = (payload.userName || employeeName).trim() || buildFallbackNameFromEmail(resolvedEmail);
+      const resolvedTrainerName = (payload.trainerName || trainerName).trim();
 
       setEmployeeName(resolvedName);
       setEmployeeEmail(resolvedEmail);
+      setTrainerName(resolvedTrainerName);
       if (payload.profile) {
         setSelectedProfile(payload.profile);
       }
@@ -248,6 +253,7 @@ export default function Home() {
             level={selectedLevel}
             employeeName={employeeName}
             employeeEmail={employeeEmail}
+            trainerName={trainerName}
             finalReport={finalReport}
             assessmentId={conversationId ? String(conversationId) : undefined}
           />
