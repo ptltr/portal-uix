@@ -158,7 +158,17 @@ function sanitizeRecommendations(items: Recommendation[]): Recommendation[] {
     const mapped = EXTERNAL_RECOMMENDATION_BY_TITLE[titleKey];
     const urlRaw = String(item.url || "").trim();
     const looksInternal = /internamente|capital humano/i.test(urlRaw);
+    const isInternalWorkshop = /taller\s+interno/i.test(item.name || "");
     const hasExternalUrl = /^https?:\/\//i.test(urlRaw);
+
+    if (isInternalWorkshop) {
+      return {
+        name: item.name || "Taller interno UIX",
+        type: item.type || "Taller UIX · gratuito",
+        why: item.why || "Recuperado de tu avance anterior.",
+        url: "Disponible internamente en UIX. Acércate con Capital Humano para más información.",
+      };
+    }
 
     if (mapped) {
       return {

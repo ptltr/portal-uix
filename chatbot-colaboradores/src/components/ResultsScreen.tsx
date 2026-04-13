@@ -146,6 +146,16 @@ const EXTERNAL_RESOURCE_BY_TITLE: Record<string, { type: string; why: string; ur
 };
 
 const getExternalResourceMetaByTitle = (title: string, index: number) => {
+  const isInternalWorkshop = /taller\s+interno/i.test(title);
+  if (isInternalWorkshop) {
+    return {
+      title,
+      type: 'Taller UIX · gratuito',
+      why: 'Recuperado de tu avance anterior.',
+      url: 'Disponible internamente en UIX. Acércate con Capital Humano para más información.',
+    };
+  }
+
   const known = EXTERNAL_RESOURCE_BY_TITLE[normalizeTitle(title)];
   if (known) return { title, ...known };
 
