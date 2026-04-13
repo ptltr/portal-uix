@@ -18,6 +18,36 @@ interface ParsedReport {
   recommendations: Recommendation[];
 }
 
+const DEFAULT_STRENGTHS: Competency[] = [
+  {
+    name: "Compromiso con tu desarrollo",
+    description: "Mantienes seguimiento activo de tu ruta de aprendizaje y continuidad en tu proceso.",
+  },
+  {
+    name: "Persistencia",
+    description: "Sostienes el avance y registras evidencia para fortalecer tu crecimiento profesional.",
+  },
+  {
+    name: "Orientación a resultados",
+    description: "Buscas aplicar lo aprendido en acciones concretas dentro de tu trabajo.",
+  },
+];
+
+const DEFAULT_OPPORTUNITIES: Competency[] = [
+  {
+    name: "Comunicación estratégica",
+    description: "Aterrizar mejor aprendizajes y resultados para compartirlos con claridad.",
+  },
+  {
+    name: "Priorización y foco",
+    description: "Definir bloques semanales para cerrar recursos pendientes con consistencia.",
+  },
+  {
+    name: "Aplicación práctica",
+    description: "Traducir aprendizajes en acciones medibles que impacten tus proyectos.",
+  },
+];
+
 const PDF_FALLBACK_RECOMMENDATIONS: Recommendation[] = [
   {
     name: "Improving Communication Skills",
@@ -202,28 +232,33 @@ function cleanMarkdown(text: string): string {
 
 function parseCompetencies(block: string): Competency[] {
   const items: Competency[] = [];
-  const lines = block.split("\n").filter((l) => l.trim().match(/^[•\-]/));
+  const lines = block.split("\n").map((line) => line.trim()).filter(Boolean);
   for (const line of lines) {
-    const m = line.match(/[•\-]\s*\*\*([^*]+)\*\*[:\s]+(.+)/);
+    const m = line.match(/(?:[•\-]\s*)?\*\*([^*]+)\*\*[:\s]+(.+)/);
     if (m) {
       items.push({
         name: cleanMarkdown(m[1]),
         description: cleanMarkdown(m[2]),
       });
     } else {
-      const plain = cleanMarkdown(line);
-      if (plain) items.push({ name: plain, description: "" });
+      const plainMatch = line.match(/(?:[•\-]\s*)?([^:]+):\s+(.+)/);
+      if (plainMatch) {
+        items.push({
+          name: cleanMarkdown(plainMatch[1]),
+          description: cleanMarkdown(plainMatch[2]),
+        });
+      }
     }
   }
   return items;
 }
 
 function parseReport(content: string): ParsedReport {
-  const fortalezasMatch = content.match(/(?:✨\s*)?Tus fortalezas\s*([\s\S]*?)(?=###|---)/i);
-  const fortalezas = fortalezasMatch ? parseCompetencies(fortalezasMatch[1]) : [];
+  const fortalezasMatch = content.match(/(?:✨\s*)?(Tus fortalezas|Fortalezas clave|Fortalezas)\s*([\s\S]*?)(?=###|---)/i);
+  const fortalezas = fortalezasMatch ? parseCompetencies(fortalezasMatch[2]) : [];
 
-  const desarrollarMatch = content.match(/(?:🌱\s*)?Lo que más[^\n]*\s*([\s\S]*?)(?=###|---)/i);
-  const desarrollar = desarrollarMatch ? parseCompetencies(desarrollarMatch[1]) : [];
+  const desarrollarMatch = content.match(/(?:🌱\s*)?(Lo que más puedes potenciar|Lo que puedes potenciar|Areas de oportunidad|Áreas de oportunidad)\s*([\s\S]*?)(?=###|---)/i);
+  const desarrollar = desarrollarMatch ? parseCompetencies(desarrollarMatch[2]) : [];
 
   // Recommendations: match only the numbered blocks
   const recommendations: Recommendation[] = [];
@@ -245,7 +280,11 @@ function parseReport(content: string): ParsedReport {
     });
   }
 
-  return { fortalezas, desarrollar, recommendations };
+  return {
+    fortalezas: fortalezas.length ? fortalezas : DEFAULT_STRENGTHS,
+    desarrollar: desarrollar.length ? desarrollar : DEFAULT_OPPORTUNITIES,
+    recommendations,
+  };
 }
 
 export function generatePDF(content: string, profile: string, date: string) {
