@@ -394,12 +394,15 @@ export function generatePDF(content: string, profile: string, date: string) {
     return innerY;
   }
 
+  const safeFortalezas = parsed.fortalezas.filter((item) => Boolean((item.name || "").trim()));
+  const safeDesarrollar = parsed.desarrollar.filter((item) => Boolean((item.name || "").trim()));
+
   const leftBottom = renderCompetencyCol(
-    "Tus fortalezas", parsed.fortalezas,
+    "Tus fortalezas", safeFortalezas.length ? safeFortalezas : DEFAULT_STRENGTHS,
     margin, y, [123, 63, 217], [245, 240, 255]
   );
   const rightBottom = renderCompetencyCol(
-    "Lo que puedes potenciar", parsed.desarrollar,
+    "Lo que puedes potenciar", safeDesarrollar.length ? safeDesarrollar : DEFAULT_OPPORTUNITIES,
     colRightX, y, [22, 163, 74], [240, 255, 248]
   );
 
