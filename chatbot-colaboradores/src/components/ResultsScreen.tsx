@@ -151,7 +151,7 @@ const getExternalResourceMetaByTitle = (title: string, index: number) => {
     return {
       title,
       type: 'Taller UIX · gratuito',
-      why: 'Recuperado de tu avance anterior.',
+      why: 'Te ayudará a reforzar tus áreas de oportunidad.',
       url: 'Disponible internamente en UIX. Acércate con Capital Humano para más información.',
     };
   }

@@ -165,7 +165,7 @@ function sanitizeRecommendations(items: Recommendation[]): Recommendation[] {
       return {
         name: item.name || "Taller interno UIX",
         type: item.type || "Taller UIX · gratuito",
-        why: item.why || "Recuperado de tu avance anterior.",
+        why: item.why || "Te ayudará a reforzar tus áreas de oportunidad.",
         url: "Disponible internamente en UIX. Acércate con Capital Humano para más información.",
       };
     }
