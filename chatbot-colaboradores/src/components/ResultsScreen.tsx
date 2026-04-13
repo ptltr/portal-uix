@@ -473,6 +473,13 @@ export function ResultsScreen({ messages, onRestart, onBackToChat, profile, empl
     && deliverableTitle.trim()
     && (deliverableSummary.trim() || templateResponses.some((item) => item.trim()))
   );
+  const latestDeliverableDate = progress?.deliverables?.length
+    ? progress.deliverables.reduce((latest, current) => {
+        const latestTime = Date.parse(latest.submittedAt || '');
+        const currentTime = Date.parse(current.submittedAt || '');
+        return currentTime >= latestTime ? current : latest;
+      }).submittedAt
+    : '';
   const currentStatus = derivedProgress.percentage >= 100
     ? statusMeta.completed
     : derivedProgress.percentage > 0
@@ -627,7 +634,7 @@ export function ResultsScreen({ messages, onRestart, onBackToChat, profile, empl
                 <p className="text-xs text-muted-foreground">Última actualización</p>
                 <div className="mt-2 flex items-center gap-2 text-sm text-foreground">
                   <CalendarClock className="w-4 h-4 text-primary" />
-                  <span>{progress ? new Date(progress.updatedAt).toLocaleDateString('es-MX') : 'Pendiente'}</span>
+                  <span>{latestDeliverableDate ? new Date(latestDeliverableDate).toLocaleDateString('es-MX') : progress ? new Date(progress.updatedAt).toLocaleDateString('es-MX') : 'Pendiente'}</span>
                 </div>
               </div>
             </div>
