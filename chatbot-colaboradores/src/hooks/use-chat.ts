@@ -136,7 +136,15 @@ const migrateLegacyReportContent = (report: string): string => {
     )
     .replace(
       /Disponible internamente en UIX(?!\. Acércate con Capital Humano para más información\.)/g,
-      "Disponible internamente en UIX. Acércate con Capital Humano para más información."
+      "Disponible internamente en UIX. Consulta con el Área de Capital Humano para más información."
+    )
+    .replace(
+      /Disponible internamente en UIX\. Acércate con Capital Humano para más información\./g,
+      "Disponible internamente en UIX. Consulta con el Área de Capital Humano para más información."
+    )
+    .replace(
+      /Disponible internamente en UIX\. Consulta con tu equipo de seguimiento para más información\./g,
+      "Disponible internamente en UIX. Consulta con el Área de Capital Humano para más información."
     )
     .replace(
       /Recuperado desde tu seguimiento previo en Capital Humano\.?/gi,
