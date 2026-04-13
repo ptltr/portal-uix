@@ -5,7 +5,8 @@ import path from "path";
 const rawPort = process.env.PORT || "5173";
 const port = Number(rawPort);
 
-const basePath = process.env.BASE_PATH || "/";
+const isProduction = process.env.NODE_ENV === "production";
+const basePath = process.env.BASE_PATH || (isProduction ? "/portal-uix/" : "/");
 
 export default {
   base: basePath,

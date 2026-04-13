@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "NODE_ENV=development tsx ./src/index.ts",
+    "dev": "NODE_ENV=development tsx --env-file=.env ./src/index.ts",
     "build": "tsx ./build.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
@@ -17,7 +17,8 @@
     "cookie-parser": "^1.4.7",
     "cors": "^2",
     "pino": "^9",
-    "pino-http": "^10"
+    "pino-http": "^10",
+    "nodemailer": "^6.10.1"
   },
   "devDependencies": {
     "@types/node": "catalog:",

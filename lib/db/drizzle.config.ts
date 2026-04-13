@@ -1,14 +1,12 @@
 import { defineConfig } from "drizzle-kit";
 import path from "path";
 
-if (!process.env.DATABASE_URL) {
-  throw new Error("DATABASE_URL, ensure the database is provisioned");
-}
+const isProduction = process.env.NODE_ENV === "production";
 
 export default defineConfig({
   schema: path.join(__dirname, "./src/schema/index.ts"),
-  dialect: "postgresql",
+  dialect: isProduction ? "postgresql" : "sqlite",
   dbCredentials: {
-    url: process.env.DATABASE_URL,
+    url: isProduction ? (process.env.DATABASE_URL || "") : ":memory:",
   },
 });

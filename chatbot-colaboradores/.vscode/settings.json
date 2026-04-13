@@ -1,0 +1,14 @@
+{
+  "task.allowAutomaticTasks": "on",
+  "remote.autoForwardPorts": true,
+  "remote.restoreForwardedPorts": true,
+  "remote.portsAttributes": {
+    "5173": {
+      "label": "UIX Web App (Share)",
+      "onAutoForward": "openBrowser",
+      "requireLocalPort": false,
+      "visibility": "public",
+      "protocol": "https"
+    }
+  }
+}

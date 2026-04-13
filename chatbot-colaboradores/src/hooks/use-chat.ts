@@ -942,8 +942,9 @@ export function useChat() {
     }
   }, [getPersistedSnapshot, hasSnapshotContent, isTyping]);
 
+
   useEffect(() => {
-    if (!hasHydratedRef.current || isTyping || !employeeEmail.trim()) return;
+    if (!hasHydratedRef.current || !employeeEmail.trim()) return;
 
     const hasContent = messages.length > 0 || Boolean(finalReport);
     if (!hasContent) return;
@@ -954,8 +955,8 @@ export function useChat() {
 
     remoteSaveTimeoutRef.current = window.setTimeout(() => {
       const snapshot = getPersistedSnapshot();
-      void saveSessionByEmail(employeeEmail, snapshot).catch(() => {
-        // Ignore remote persistence errors to keep chat flow uninterrupted.
+      saveSessionByEmail(employeeEmail, snapshot).catch(() => {
+        window.alert('No se pudo guardar tu avance en la nube. Tu progreso solo estará disponible en este navegador hasta que se recupere la conexión.');
       });
     }, 400);
 
@@ -1472,6 +1473,20 @@ ${followUpEmailLine}
           setIsTyping(false);
           if (shouldCompleteAfterStream) {
             setIsEvaluationComplete(true);
+            // Refuerzo: sincroniza progreso en backend al terminar evaluación
+            if (employeeEmail.trim()) {
+              const assignedResources = parseRecommendedResourceTitles(reportText);
+              void syncCollaboratorAssessment({
+                collaboratorEmail: employeeEmail,
+                collaboratorName: employeeName,
+                trainerName,
+                profile: "",
+                assessmentId: _currentConvId ? String(_currentConvId) : undefined,
+                assignedResources,
+              }).catch(() => {
+                // Ignora errores para no interrumpir el flujo
+              });
+            }
           }
         }
       }, 18);
@@ -1525,13 +1540,22 @@ ${followUpEmailLine}
     const validRemote = remoteSession && hasSnapshotContent(remoteSession) ? remoteSession : null;
     const validLocal = localSession && hasSnapshotContent(localSession) ? localSession : null;
 
-    const selected = pickPreferredSnapshot(validRemote, validLocal);
 
-    if (selected && isResumeUsableSnapshot(selected)) {
+    // Prioriza el snapshot remoto si existe y es válido
+    if (validRemote) {
       applyPersistedState({
-        ...selected,
+        ...validRemote,
         employeeEmail: normalizedEmail,
-        employeeName: selected.employeeName || employeeName,
+        employeeName: validRemote.employeeName || employeeName,
+        updatedAt: Date.now(),
+      });
+      return true;
+    }
+    if (validLocal) {
+      applyPersistedState({
+        ...validLocal,
+        employeeEmail: normalizedEmail,
+        employeeName: validLocal.employeeName || employeeName,
         updatedAt: Date.now(),
       });
       return true;

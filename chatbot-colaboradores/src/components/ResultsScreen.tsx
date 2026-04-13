@@ -380,9 +380,20 @@ export function ResultsScreen({ messages, onRestart, onBackToChat, profile, empl
 
       try {
         const existing = await getCollaboratorProgress(employeeEmail);
-        const resourcesToPersist = existing.assignedResources?.length
-          ? existing.assignedResources
-          : recommendedResources;
+        const existingResources = existing.assignedResources || [];
+        const hasExistingResources = existingResources.length > 0;
+        const sameResourceSet = hasExistingResources
+          && existingResources.length === recommendedResources.length
+          && existingResources.every((resource, index) => resource === recommendedResources[index]);
+
+        const shouldSync = !hasExistingResources || !sameResourceSet;
+
+        if (!shouldSync) {
+          if (!isMounted) return;
+          setProgress(existing);
+          setSelectedResources(existing.deliverables.at(-1)?.completedResources || []);
+          return;
+        }
 
         await syncCollaboratorAssessment({
           collaboratorEmail: employeeEmail,
@@ -390,12 +401,13 @@ export function ResultsScreen({ messages, onRestart, onBackToChat, profile, empl
           trainerName,
           profile,
           assessmentId,
-          assignedResources: resourcesToPersist,
+          assignedResources: recommendedResources,
         });
-        const result = await getCollaboratorProgress(employeeEmail);
+
+        const refreshed = await getCollaboratorProgress(employeeEmail);
         if (!isMounted) return;
-        setProgress(result);
-        setSelectedResources(result.deliverables.at(-1)?.completedResources || []);
+        setProgress(refreshed);
+        setSelectedResources(refreshed.deliverables.at(-1)?.completedResources || []);
       } catch (error) {
         if (!isMounted) return;
         setProgressError('No fue posible cargar el avance del colaborador.');

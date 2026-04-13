@@ -1,0 +1,32 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "UIX: Iniciar app (share)",
+      "type": "shell",
+      "command": "pnpm",
+      "args": ["share"],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "isBackground": true,
+      "runOptions": {
+        "runOn": "folderOpen"
+      },
+      "problemMatcher": [
+        {
+          "pattern": [
+            {
+              "regexp": ".*"
+            }
+          ],
+          "background": {
+            "activeOnStart": true,
+            "beginsPattern": ".*(vite|building client environment).*",
+            "endsPattern": ".*(built in|Local:).*"
+          }
+        }
+      ]
+    }
+  ]
+}
