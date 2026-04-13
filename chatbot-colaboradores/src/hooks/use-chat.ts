@@ -145,6 +145,10 @@ const migrateLegacyReportContent = (report: string): string => {
     .replace(
       /Recuperamos tu seguimiento desde Capital Humano\.?/gi,
       "Recuperamos tu avance anterior."
+    )
+    .replace(
+      /Capital Humano puede ver este seguimiento/gi,
+      "Tu equipo de seguimiento puede ver este avance"
     );
 };
 
@@ -1089,7 +1093,7 @@ ${resources}
 - **Sube tu entregable:** Registra un resumen corto de lo que aplicaste, qué cambió en tu trabajo y agrega evidencias si las tienes.
 - **Elige un formato guiado:** Puedes registrar un mini caso aplicado, un resumen de aprendizaje o la explicación de una herramienta con campos estructurados.
 - **Tu avance se actualiza:** Cada entregable ayuda a reflejar tu progreso y permite dar seguimiento a tu crecimiento.
-- **Capital Humano puede ver este seguimiento:** Tu avance, recursos completados y entregables registrados estarán disponibles para acompañar tu desarrollo.
+- **Tu equipo de seguimiento puede ver este avance:** Tus recursos completados y entregables registrados estarán disponibles para acompañar tu desarrollo.
 
 ### Plan de seguimiento (30-60-90 días)
 - **Día 30:** Completar al menos 2 recursos y registrar aprendizajes clave.
