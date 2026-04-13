@@ -64,6 +64,7 @@ export default function Home() {
     isTyping,
     sendMessage,
     isEvaluationComplete,
+    startNewEvaluation,
     resetChat,
     employeeName,
     employeeEmail,
@@ -117,8 +118,8 @@ export default function Home() {
   }, [phase, conversationId, messages.length, finalReport]);
 
   const handleStart = (id: number, profile: string, level: string, userName: string, userEmail: string, userTrainerName: string) => {
-    // Starting a new evaluation must discard any previously resumed state.
-    resetChat();
+    // Start a fresh runtime flow but preserve saved history in case the click was accidental.
+    startNewEvaluation();
     setConversationId(id);
     setSelectedProfile(profile);
     setSelectedLevel(level);

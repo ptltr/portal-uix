@@ -929,13 +929,14 @@ export function useChat() {
     if (!hasHydratedRef.current || isTyping) return;
 
     const snapshot = getPersistedSnapshot();
+    if (!hasSnapshotContent(snapshot)) return;
 
     try {
       localStorage.setItem(CHAT_STORAGE_KEY, JSON.stringify(snapshot));
     } catch {
       // Ignore storage write errors (quota/private mode).
     }
-  }, [getPersistedSnapshot, isTyping]);
+  }, [getPersistedSnapshot, hasSnapshotContent, isTyping]);
 
   useEffect(() => {
     if (!hasHydratedRef.current || isTyping || !employeeEmail.trim()) return;
@@ -1473,7 +1474,7 @@ ${followUpEmailLine}
     }, 700);
   }, [buildPersonalizedReport, currentStep, employeeName, trainerName, generateContextualResponse]);
 
-  const resetChat = useCallback(() => {
+  const clearRuntimeState = useCallback(() => {
     setConversationId(null);
     setMessages([]);
     setIsEvaluationComplete(false);
@@ -1486,12 +1487,21 @@ ${followUpEmailLine}
     setEmployeeEmail("");
     setTrainerName("");
     signalsRef.current = { strengths: {}, opportunities: {} };
+  }, []);
+
+  const startNewEvaluation = useCallback(() => {
+    // Keep persisted history intact so an accidental click can still be recovered.
+    clearRuntimeState();
+  }, [clearRuntimeState]);
+
+  const resetChat = useCallback(() => {
+    clearRuntimeState();
     try {
       localStorage.removeItem(CHAT_STORAGE_KEY);
     } catch {
       // Ignore storage cleanup errors.
     }
-  }, []);
+  }, [clearRuntimeState]);
 
   const checkSessionForEmail = useCallback(async (email: string): Promise<boolean> => {
     const hasLocal = hasLocalSessionForEmail(email);
@@ -1584,6 +1594,7 @@ ${followUpEmailLine}
     isTyping,
     sendMessage,
     isEvaluationComplete,
+    startNewEvaluation,
     resetChat,
     employeeName,
     setEmployeeName,
