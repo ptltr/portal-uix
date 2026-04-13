@@ -41,7 +41,7 @@ function normalizeReportContent(content: string): string {
     .replace('---REPORTE_FIN---', '')
     .replace(/Recuperado desde tu seguimiento previo en Capital Humano\.?/gi, 'Recuperado de tu avance anterior.')
     .replace(/Recuperamos tu seguimiento desde Capital Humano\.?/gi, 'Recuperamos tu avance anterior.')
-    .replace(/Capital Humano puede ver este seguimiento/gi, 'Tu equipo de seguimiento puede ver este avance')
+    .replace(/Capital Humano puede ver este seguimiento/gi, 'El Área de Capital Humano puede ver este avance')
     .replace(/Acércate con Capital Humano para más información\.?/gi, 'Consulta con el Área de Capital Humano para más información.')
     .trim();
 }
