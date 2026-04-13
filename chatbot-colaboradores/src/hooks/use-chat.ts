@@ -629,9 +629,9 @@ const buildRecoveredReportFromProgress = (args: {
 
   const resources = recoveredResources.map((resource, index) => (
     `**${index + 1}. ${resource.label}**\n` +
-    `**Tipo:** ${resource.tipo}\n` +
-    `**Por qué te va a servir:** ${resource.why}\n` +
-    `**Recurso:** ${resource.url}`
+    `- **Tipo:** ${resource.tipo}\n` +
+    `- **Por qué te va a servir:** ${resource.why}\n` +
+    `- **Recurso:** ${resource.url}`
   )).join("\n\n");
 
   const latestDeliverable = args.deliverables.length ? args.deliverables[args.deliverables.length - 1] : null;
@@ -1077,7 +1077,7 @@ export function useChat() {
 
     const resources = buildMixedResourceRecommendations(resolvedOpportunities, 5)
       .map((res, index) => {
-        return `**${index + 1}. ${res.label}**\n**Tipo:** ${res.tipo}\n**Por qué te va a servir:** ${res.why}\n**Recurso:** ${res.url}`;
+        return `**${index + 1}. ${res.label}**\n- **Tipo:** ${res.tipo}\n- **Por qué te va a servir:** ${res.why}\n- **Recurso:** ${res.url}`;
       })
       .join("\n\n");
 

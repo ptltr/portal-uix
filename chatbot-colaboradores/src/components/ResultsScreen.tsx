@@ -177,9 +177,9 @@ const buildResourceSectionFromAssigned = (assignedResources: string[]): string =
 
   return resolved.slice(0, 5).map((item, index) => (
     `**${index + 1}. ${item.title}**\n` +
-    `**Tipo:** ${item.type}\n` +
-    `**Por qué te va a servir:** ${item.why}\n` +
-    `**Recurso:** ${item.url}`
+    `- **Tipo:** ${item.type}\n` +
+    `- **Por qué te va a servir:** ${item.why}\n` +
+    `- **Recurso:** ${item.url}`
   )).join('\n\n');
 };
 
