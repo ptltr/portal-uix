@@ -92,6 +92,28 @@ const normalizeTitle = (value: string): string => {
     .trim();
 };
 
+const getInternalWorkshopBenefitByTitle = (title: string): string => {
+  const normalized = normalizeTitle(title);
+
+  if (normalized.includes('comunicacion')) {
+    return 'Te ayudará a comunicar ideas con mayor claridad, mejorar conversaciones difíciles y alinear mejor expectativas con tu equipo.';
+  }
+
+  if (normalized.includes('trabajo en equipo')) {
+    return 'Te ayudará a fortalecer colaboración, coordinación entre roles y confianza para avanzar en objetivos compartidos.';
+  }
+
+  if (normalized.includes('tiempo') || normalized.includes('administracion')) {
+    return 'Te ayudará a priorizar mejor, organizar tu carga de trabajo y sostener foco en tareas de mayor impacto.';
+  }
+
+  if (normalized.includes('liderazgo') || normalized.includes('management')) {
+    return 'Te ayudará a reforzar liderazgo práctico, delegación y seguimiento de resultados con mayor claridad.';
+  }
+
+  return 'Te ayudará a reforzar tus áreas de oportunidad con herramientas prácticas aplicables en tu rol.';
+};
+
 const EXTERNAL_RESOURCE_BY_TITLE: Record<string, { type: string; why: string; url: string }> = {
   [normalizeTitle('Improving Communication Skills')]: {
     type: 'Curso en Coursera · opción gratuita',
@@ -151,7 +173,7 @@ const getExternalResourceMetaByTitle = (title: string, index: number) => {
     return {
       title,
       type: 'Taller UIX · gratuito',
-      why: 'Te ayudará a reforzar tus áreas de oportunidad.',
+      why: getInternalWorkshopBenefitByTitle(title),
       url: 'Disponible internamente en UIX. Acércate con Capital Humano para más información.',
     };
   }
