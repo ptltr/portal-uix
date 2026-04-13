@@ -157,6 +157,10 @@ const migrateLegacyReportContent = (report: string): string => {
     .replace(
       /Capital Humano puede ver este seguimiento/gi,
       "El Área de Capital Humano puede ver este avance"
+    )
+    .replace(
+      /Recuperado desde tu seguimiento previo para que puedas retomar tu plan sin perder contexto\.?/gi,
+      "Te ayudará a reforzar tus áreas de oportunidad con acciones prácticas aplicables a tu rol."
     );
 };
 
@@ -617,7 +621,7 @@ const buildRecoveredReportFromProgress = (args: {
       return {
         label: title,
         tipo: "Recurso abierto recomendado",
-        why: "Recuperado desde tu seguimiento previo para que puedas retomar tu plan sin perder contexto.",
+        why: "Te ayudará a reforzar tus áreas de oportunidad con acciones prácticas aplicables a tu rol.",
         url: `https://www.google.com/search?q=${encodeURIComponent(title)}`,
         category: "curso" as const,
       };
