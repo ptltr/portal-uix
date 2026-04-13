@@ -137,6 +137,14 @@ const migrateLegacyReportContent = (report: string): string => {
     .replace(
       /Disponible internamente en UIX(?!\. Acércate con Capital Humano para más información\.)/g,
       "Disponible internamente en UIX. Acércate con Capital Humano para más información."
+    )
+    .replace(
+      /Recuperado desde tu seguimiento previo en Capital Humano\.?/gi,
+      "Recuperado de tu avance anterior."
+    )
+    .replace(
+      /Recuperamos tu seguimiento desde Capital Humano\.?/gi,
+      "Recuperamos tu avance anterior."
     );
 };
 
@@ -1537,7 +1545,7 @@ ${followUpEmailLine}
         messages: [{
           id: `assistant-recovered-${Date.now()}`,
           role: "assistant",
-          content: "Recuperamos tu seguimiento desde Capital Humano. Puedes continuar desde Ver avance.",
+          content: "Recuperamos tu avance anterior. Puedes continuar desde Ver avance.",
         }],
         isEvaluationComplete: true,
         employeeName: progress.collaboratorName || fallbackName || "",
