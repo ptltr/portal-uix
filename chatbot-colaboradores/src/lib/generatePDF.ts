@@ -446,7 +446,7 @@ export function generatePDF(content: string, profile: string, date: string) {
       urlRaw.toLowerCase().includes("internamente") ||
       (!urlRaw.startsWith("http") && urlRaw !== "");
     const urlDisplay = isInternal
-      ? "Disponible internamente en UIX. Consulta con tu equipo de seguimiento para más información."
+      ? "Disponible internamente en UIX. Consulta con el Área de Capital Humano para más información."
       : urlRaw.length > 60
       ? urlRaw.slice(0, 57) + "..."
       : urlRaw;
