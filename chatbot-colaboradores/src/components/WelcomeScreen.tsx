@@ -80,6 +80,7 @@ export function WelcomeScreen({
   const [isCheckingRemoteSession, setIsCheckingRemoteSession] = useState(false);
   const [resumeError, setResumeError] = useState('');
   const [ignoreReminderResume, setIgnoreReminderResume] = useState(false);
+  const [showStartConfirmation, setShowStartConfirmation] = useState(false);
 
   const isValidEmail = (value: string) => /\S+@\S+\.\S+/.test(value.trim());
 
@@ -183,6 +184,16 @@ export function WelcomeScreen({
 
   const handleStart = () => {
     if (!canStart) return;
+    if (hasAnyResumeCandidate && isValidEmail(userEmail)) {
+      setShowStartConfirmation(true);
+      return;
+    }
+
+    createConversation.mutate({ profile: selectedProfile });
+  };
+
+  const confirmStartNewEvaluation = () => {
+    setShowStartConfirmation(false);
     createConversation.mutate({ profile: selectedProfile });
   };
 
@@ -199,10 +210,12 @@ export function WelcomeScreen({
     setHasSavedSessionForEmail(false);
     setHasRemoteSessionForEmail(false);
     setResumeError('');
+    setShowStartConfirmation(false);
     setStep(nextStep);
   };
 
   const handleResume = async (payload?: ResumeSessionPayload) => {
+    setShowStartConfirmation(false);
     setResumeError('');
     const result = await onResumeSession?.(payload);
     if (result === false) {
@@ -514,6 +527,32 @@ export function WelcomeScreen({
                   <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform duration-200" />
                 )}
               </button>
+
+              {showStartConfirmation && (
+                <div className="rounded-2xl border border-amber-300/35 bg-amber-300/10 p-4 space-y-3">
+                  <p className="text-sm text-amber-100 font-medium">
+                    Detectamos una conversación anterior para este correo.
+                  </p>
+                  <p className="text-xs text-amber-100/90 leading-relaxed">
+                    Si inicias una nueva evaluación, comenzarás desde cero en esta sesión. Tu conversación anterior seguirá disponible para retomar después.
+                  </p>
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    <button
+                      onClick={() => setShowStartConfirmation(false)}
+                      className="w-full rounded-xl py-2.5 text-sm font-semibold text-foreground glass-card border border-white/12 hover:border-primary/40 transition-colors"
+                    >
+                      Cancelar
+                    </button>
+                    <button
+                      onClick={confirmStartNewEvaluation}
+                      disabled={createConversation.isPending}
+                      className="w-full rounded-xl py-2.5 text-sm font-semibold text-white btn-brand disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      Sí, iniciar nueva
+                    </button>
+                  </div>
+                </div>
+              )}
 
               <button
                 onClick={() => setStep('intro')}
