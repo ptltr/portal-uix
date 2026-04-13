@@ -123,7 +123,7 @@ export function WelcomeScreen({
     && normalizeEmail(initialUserEmail) === normalizeEmail(userEmail);
   const hasAnyResumeCandidate = hasSavedSessionForEmail || hasRemoteSessionForEmail;
   const canAttemptResume = isValidEmail(userEmail);
-  const showResumeOptionsInProfile = isValidEmail(userEmail);
+  const showResumeOptionsInProfile = userEmail.trim().length > 0;
 
   useEffect(() => {
     const email = normalizeEmail(userEmail);
@@ -374,7 +374,7 @@ export function WelcomeScreen({
               {showResumeOptionsInProfile && (
                 <div className="space-y-2 rounded-2xl border border-secondary/25 bg-secondary/10 p-3.5">
                   <p className="text-xs text-secondary font-medium">
-                    {isCheckingRemoteSession
+                    {isCheckingRemoteSession && isValidEmail(userEmail)
                       ? 'Verificando historial para este correo...'
                       : hasAnyResumeCandidate
                       ? hasSavedSessionForEmail
@@ -384,7 +384,9 @@ export function WelcomeScreen({
                           : 'Detectamos una conversación guardada para este correo.'
                       : hasReminderResumeCandidate
                         ? 'Llegaste desde un recordatorio. Ingresa el mismo correo para buscar tu historial guardado.'
-                        : 'Puedes retomar si ya existe historial para este correo.'}
+                        : isValidEmail(userEmail)
+                          ? 'Puedes retomar si ya existe historial para este correo.'
+                          : 'Ingresa un correo válido para retomar una conversación.'}
                   </p>
                   <div className="grid gap-2 sm:grid-cols-2">
                     <button
@@ -403,7 +405,7 @@ export function WelcomeScreen({
                       disabled={!canAttemptResume}
                       className="w-full rounded-xl py-2.5 text-sm font-semibold text-foreground glass-card border border-white/12 hover:border-primary/40 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                     >
-                      {hasAnyResumeCandidate ? 'Retomar conversación' : 'Intentar retomar conversación'}
+                      Retomar conversación
                     </button>
                     <button
                       onClick={() => handleStartFresh('profile', false)}
