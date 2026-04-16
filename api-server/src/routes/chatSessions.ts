@@ -1,7 +1,7 @@
 import { Router, type IRouter } from "express";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
-import pg from "pg";
+//import pg from "pg";
 
 interface SessionMessage {
   id: string;
@@ -36,7 +36,7 @@ let dbReady = false;
 
 const usingDatabasePersistence = Boolean(process.env.DATABASE_URL);
 const dbPool = usingDatabasePersistence
-  ? new pg.Pool({ connectionString: process.env.DATABASE_URL })
+ // ? new pg.Pool({ connectionString: process.env.DATABASE_URL })
   : null;
 
 const normalizeEmail = (value: string): string => value.trim().toLowerCase();
