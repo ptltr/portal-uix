@@ -1526,7 +1526,24 @@ ${followUpEmailLine}
     const hasLocal = hasLocalSessionForEmail(email);
     if (hasLocal) return true;
 
-    return hasSessionByEmail(email);
+    const hasRemoteSession = await hasSessionByEmail(email);
+    if (hasRemoteSession) return true;
+
+    try {
+      const normalizedEmail = email.trim().toLowerCase();
+      if (!normalizedEmail) return false;
+
+      const progress = await getCollaboratorProgress(normalizedEmail);
+      return (
+        (progress.assignedResources?.length || 0) > 0
+        || (progress.deliverables?.length || 0) > 0
+        || (progress.completionPercentage || 0) > 0
+        || Boolean(progress.collaboratorName?.trim())
+        || Boolean(progress.latestAssessmentId?.trim())
+      );
+    } catch {
+      return false;
+    }
   }, [hasLocalSessionForEmail]);
 
   const loadSessionForEmail = useCallback(async (email: string): Promise<boolean> => {
@@ -1540,22 +1557,13 @@ ${followUpEmailLine}
     const validRemote = remoteSession && hasSnapshotContent(remoteSession) ? remoteSession : null;
     const validLocal = localSession && hasSnapshotContent(localSession) ? localSession : null;
 
+    const selected = pickPreferredSnapshot(validRemote, validLocal);
 
-    // Prioriza el snapshot remoto si existe y es válido
-    if (validRemote) {
+    if (selected && isResumeUsableSnapshot(selected)) {
       applyPersistedState({
-        ...validRemote,
+        ...selected,
         employeeEmail: normalizedEmail,
-        employeeName: validRemote.employeeName || employeeName,
-        updatedAt: Date.now(),
-      });
-      return true;
-    }
-    if (validLocal) {
-      applyPersistedState({
-        ...validLocal,
-        employeeEmail: normalizedEmail,
-        employeeName: validLocal.employeeName || employeeName,
+        employeeName: selected.employeeName || employeeName,
         updatedAt: Date.now(),
       });
       return true;
