@@ -417,15 +417,36 @@ const normalizeDeliverables = (value: unknown, fallbackSubmittedAt?: string): De
 const normalizeProgressRecord = (value: unknown): CollaboratorProgress | null => {
   if (!value || typeof value !== "object") return null;
 
-  const raw = value as Partial<CollaboratorProgress>;
-  const collaboratorEmail = normalizeEmail(typeof raw.collaboratorEmail === "string" ? raw.collaboratorEmail : "");
+  const unwrap = (input: unknown): Record<string, unknown> | null => {
+    if (!input || typeof input !== "object") return null;
+    const obj = input as Record<string, unknown>;
+    if (obj.progress && typeof obj.progress === "object") return unwrap(obj.progress);
+    if (obj.data && typeof obj.data === "object") return unwrap(obj.data);
+    if (obj.result && typeof obj.result === "object") return unwrap(obj.result);
+    return obj;
+  };
+
+  const unwrapped = unwrap(value);
+  if (!unwrapped) return null;
+
+  const raw = unwrapped as Partial<CollaboratorProgress> & Record<string, unknown>;
+  const emailCandidate =
+    (typeof raw.collaboratorEmail === "string" ? raw.collaboratorEmail : "")
+    || (typeof raw.email === "string" ? raw.email : "")
+    || (typeof raw.collaborator_email === "string" ? raw.collaborator_email : "");
+  const collaboratorEmail = normalizeEmail(emailCandidate);
   if (!collaboratorEmail) return null;
 
-  const assignedResources = normalizeResourceList(raw.assignedResources);
+  const assignedResources = normalizeResourceList(
+    raw.assignedResources
+    ?? raw.resources
+    ?? raw.recommendedResources
+    ?? raw.recommended_resources,
+  );
   const fallbackSubmittedAt = typeof raw.updatedAt === "string" && raw.updatedAt.trim()
     ? raw.updatedAt
     : "";
-  const deliverables = normalizeDeliverables(raw.deliverables, fallbackSubmittedAt);
+  const deliverables = normalizeDeliverables(raw.deliverables ?? raw.submissions, fallbackSubmittedAt);
   const totalResourcesCount = Math.max(
     toFiniteNumber(raw.totalResourcesCount, assignedResources.length || 5),
     assignedResources.length || 1,
