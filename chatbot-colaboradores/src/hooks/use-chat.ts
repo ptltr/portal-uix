@@ -1549,15 +1549,63 @@ ${followUpEmailLine}
   const loadSessionForEmail = useCallback(async (email: string): Promise<boolean> => {
     const normalizedEmail = email.trim().toLowerCase();
 
-    const [remoteSession, localSession] = await Promise.all([
+    const [remoteSession, localSession, progressResult] = await Promise.all([
       fetchSessionByEmail(normalizedEmail),
       Promise.resolve(readLocalSnapshotForEmail(normalizedEmail)),
+      getCollaboratorProgress(normalizedEmail).catch(() => null),
     ]);
 
     const validRemote = remoteSession && hasSnapshotContent(remoteSession) ? remoteSession : null;
     const validLocal = localSession && hasSnapshotContent(localSession) ? localSession : null;
+    const hasRecoverableProgress = Boolean(
+      progressResult
+      && (
+        (progressResult.assignedResources?.length || 0) > 0
+        || (progressResult.deliverables?.length || 0) > 0
+        || (progressResult.completionPercentage || 0) > 0
+        || Boolean(progressResult.collaboratorName?.trim())
+        || Boolean(progressResult.latestAssessmentId?.trim())
+      )
+    );
 
     const selected = pickPreferredSnapshot(validRemote, validLocal);
+    const selectedHasReport = Boolean(String(selected?.finalReport || "").trim());
+    const selectedIsComplete = Boolean(selected?.isEvaluationComplete) || selectedHasReport;
+
+    if (hasRecoverableProgress && (!selected || !selectedIsComplete)) {
+      const progress = progressResult!;
+      const report = buildRecoveredReportFromProgress({
+        email: normalizedEmail,
+        name: progress.collaboratorName || employeeName || "",
+        assignedResources: progress.assignedResources || [],
+        completionPercentage: progress.completionPercentage || 0,
+        deliverables: (progress.deliverables || []).map((item) => ({
+          title: item.title || "",
+          summary: item.summary || "",
+          submittedAt: item.submittedAt || "",
+        })),
+      });
+
+      applyPersistedState({
+        conversationId: Date.now(),
+        messages: [{
+          id: `assistant-recovered-${Date.now()}`,
+          role: "assistant",
+          content: "Recuperamos tu avance anterior. Puedes continuar desde Ver avance.",
+        }],
+        isEvaluationComplete: true,
+        employeeName: progress.collaboratorName || employeeName || "",
+        employeeEmail: normalizedEmail,
+        trainerName: progress.trainerName || "",
+        currentStep: STEPS.length,
+        finalReport: report,
+        followUpCount: 0,
+        isInFollowUp: false,
+        signals: { strengths: {}, opportunities: {} },
+        updatedAt: Date.now(),
+      });
+      return true;
+    }
 
     if (selected && isResumeUsableSnapshot(selected)) {
       applyPersistedState({
