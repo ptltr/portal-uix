@@ -16,6 +16,7 @@ interface ResumeSessionPayload {
 interface WelcomeScreenProps {
   onStart: (conversationId: number, profile: string, level: string, userName: string, userEmail: string, trainerName: string) => void;
   hasSavedSession?: boolean;
+  disableHistoryLookup?: boolean;
   onResumeSession?: (payload?: ResumeSessionPayload) => Promise<boolean> | boolean;
   onStartFresh?: () => void;
   checkSessionByEmail?: (email: string) => Promise<boolean>;
@@ -62,6 +63,7 @@ function CheckIcon() {
 export function WelcomeScreen({
   onStart,
   hasSavedSession = false,
+  disableHistoryLookup = false,
   onResumeSession,
   onStartFresh,
   checkSessionByEmail,
@@ -69,6 +71,7 @@ export function WelcomeScreen({
   initialUserEmail = '',
   resumeFromReminderLink = false,
 }: WelcomeScreenProps) {
+  const historyLookupEnabled = !disableHistoryLookup;
   const [step, setStep] = useState<'intro' | 'profile'>(resumeFromReminderLink ? 'profile' : 'intro');
   const [expandedGroup, setExpandedGroup] = useState<string | null>(null);
   const [selectedProfile, setSelectedProfile] = useState<string>('');
@@ -117,15 +120,22 @@ export function WelcomeScreen({
   };
 
   const canStart = selectedProfile !== '' && userName.trim().length > 0 && isValidEmail(userEmail);
-  const hasReminderResumeCandidate = !ignoreReminderResume
+  const hasReminderResumeCandidate = historyLookupEnabled
+    && !ignoreReminderResume
     && resumeFromReminderLink
     && Boolean(normalizeEmail(initialUserEmail))
     && normalizeEmail(initialUserEmail) === normalizeEmail(userEmail);
-  const hasAnyResumeCandidate = hasSavedSessionForEmail || hasRemoteSessionForEmail;
+  const hasAnyResumeCandidate = historyLookupEnabled && (hasSavedSessionForEmail || hasRemoteSessionForEmail);
   const canAttemptResume = isValidEmail(userEmail);
-  const showResumeOptionsInProfile = userEmail.trim().length > 0;
+  const showResumeOptionsInProfile = historyLookupEnabled && userEmail.trim().length > 0;
+  const showSavedSessionIntro = historyLookupEnabled && hasSavedSession;
 
   useEffect(() => {
+    if (!historyLookupEnabled) {
+      setHasSavedSessionForEmail(false);
+      return;
+    }
+
     const email = normalizeEmail(userEmail);
     if (!email) {
       setHasSavedSessionForEmail(false);
@@ -154,9 +164,15 @@ export function WelcomeScreen({
     } catch {
       setHasSavedSessionForEmail(false);
     }
-  }, [userEmail]);
+  }, [historyLookupEnabled, userEmail]);
 
   useEffect(() => {
+    if (!historyLookupEnabled) {
+      setHasRemoteSessionForEmail(false);
+      setIsCheckingRemoteSession(false);
+      return;
+    }
+
     let cancelled = false;
 
     const run = async () => {
@@ -185,7 +201,7 @@ export function WelcomeScreen({
     return () => {
       cancelled = true;
     };
-  }, [checkSessionByEmail, userEmail]);
+  }, [historyLookupEnabled, checkSessionByEmail, userEmail]);
 
   const handleStart = () => {
     if (!canStart) return;
@@ -202,8 +218,7 @@ export function WelcomeScreen({
     createConversation.mutate({ profile: selectedProfile });
   };
 
-  const handleStartFresh = (nextStep: 'intro' | 'profile' = 'profile', preserveInputs = false) => {
-    onStartFresh?.();
+  const handleStartFresh = (nextStep: 'intro' | 'profile' = 'profile', preserveInputs = true) => {
     setIgnoreReminderResume(true);
     setSelectedProfile('');
     if (!preserveInputs) {
@@ -295,7 +310,7 @@ export function WelcomeScreen({
                 ))}
               </div>
 
-              {hasSavedSession ? (
+              {showSavedSessionIntro ? (
                 <div className="space-y-3">
                   <button
                     onClick={() => {
@@ -310,7 +325,7 @@ export function WelcomeScreen({
 
                   <button
                     onClick={() => {
-                      handleStartFresh('profile');
+                      handleStartFresh('profile', true);
                     }}
                     className="w-full group flex items-center justify-center gap-2.5 py-4 rounded-2xl font-semibold text-foreground glass-card border border-white/12 hover:border-white/25 transition-all duration-200"
                   >
