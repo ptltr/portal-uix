@@ -232,6 +232,7 @@ export default function Home() {
             key="welcome"
             onStart={handleStart}
             hasSavedSession={hasSavedSession}
+            disableHistoryLookup
             onResumeSession={handleResumeSession}
             onStartFresh={handleRestart}
             checkSessionByEmail={checkSessionForEmail}
