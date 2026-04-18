@@ -116,7 +116,7 @@ export function WelcomeScreen({
     setSelectedProfile(subLabel);
   };
 
-  const canStart = selectedProfile !== '' && userName.trim().length > 0 && trainerName.trim().length > 0 && isValidEmail(userEmail);
+  const canStart = selectedProfile !== '' && userName.trim().length > 0 && isValidEmail(userEmail);
   const hasReminderResumeCandidate = !ignoreReminderResume
     && resumeFromReminderLink
     && Boolean(normalizeEmail(initialUserEmail))
@@ -167,7 +167,12 @@ export function WelcomeScreen({
       }
 
       setIsCheckingRemoteSession(true);
-      const exists = await checkSessionByEmail(userEmail);
+      let exists = false;
+      try {
+        exists = await checkSessionByEmail(userEmail);
+      } catch {
+        exists = false;
+      }
 
       if (!cancelled) {
         setHasRemoteSessionForEmail(exists);
