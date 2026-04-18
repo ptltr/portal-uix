@@ -56,6 +56,7 @@ export default function Home() {
   const [phase, setPhase] = useState<AppPhase>('welcome');
   const [selectedProfile, setSelectedProfile] = useState<string>('');
   const [selectedLevel, setSelectedLevel] = useState<string>('');
+  const [isStartingConversation, setIsStartingConversation] = useState(false);
 
   const {
     conversationId,
@@ -112,13 +113,20 @@ export default function Home() {
   }, [phase, selectedProfile, selectedLevel]);
 
   useEffect(() => {
-    if (phase !== 'welcome' && !conversationId && messages.length === 0 && !finalReport) {
+    if (!isStartingConversation && phase !== 'welcome' && !conversationId && messages.length === 0 && !finalReport) {
       setPhase('welcome');
     }
-  }, [phase, conversationId, messages.length, finalReport]);
+  }, [isStartingConversation, phase, conversationId, messages.length, finalReport]);
+
+  useEffect(() => {
+    if (isStartingConversation && phase === 'chat' && Boolean(conversationId)) {
+      setIsStartingConversation(false);
+    }
+  }, [isStartingConversation, phase, conversationId]);
 
   const handleStart = (id: number, profile: string, level: string, userName: string, userEmail: string, userTrainerName: string) => {
     // Start a fresh runtime flow but preserve saved history in case the click was accidental.
+    setIsStartingConversation(true);
     startNewEvaluation();
     setConversationId(id);
     setSelectedProfile(profile);
@@ -138,6 +146,7 @@ export default function Home() {
   };
 
   const handleBackToStart = () => {
+    setIsStartingConversation(false);
     setPhase('welcome');
   };
 
@@ -188,6 +197,7 @@ export default function Home() {
   };
 
   const handleRestart = () => {
+    setIsStartingConversation(false);
     if (typeof window !== 'undefined') {
       const url = new URL(window.location.href);
       url.searchParams.delete('resume');
