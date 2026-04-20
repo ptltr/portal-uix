@@ -1217,7 +1217,7 @@ ${followUpEmailLine}
     };
 
     // ── Step-aware insight: knows exactly what each question is about ──────────
-    const detectStepSpecificInsight = (text: string, stepIdx: number): string | null => {
+    const detectStepSpecificInsight = (text: string, stepIdx: number, matchedOption: OptionDefinition | null): string | null => {
       // Step 0: situación intensa — qué fue lo más retador
       if (stepIdx === 0) {
         if (/(presion|presión|urgente|deadline|entregable|prioriz|tiempo)/.test(text))
@@ -1294,12 +1294,28 @@ ${followUpEmailLine}
 
       // Step 7: qué te está costando más mejorar
       if (stepIdx === 7) {
-        if (/(tiempo|tiempos|prioridad|prioridades|organizacion|organización|foco|agenda|administ|planific)/.test(text))
+        const timePattern = /(tiempo|tiempos|prioridad|prioridades|organizacion|organización|foco|agenda|administ|planific)/;
+        const communicationPattern = /(comunicar|comunicacion|hablar|expresar|asertiv)/;
+        const delegationPattern = /(delegar|confia|soltar|control|pedir ayuda|equipo)/;
+
+        // Prioriza intención explícita en texto para evitar respuestas cruzadas.
+        if (timePattern.test(text))
           return "El manejo del tiempo y las prioridades es de las áreas más comunes y también más trabajables cuando hay consciencia.";
-        if (/(comunicar|comunicacion|hablar|expresar|asertiv)/.test(text))
+        if (communicationPattern.test(text))
           return "Nombrar la comunicación como área de mejora requiere honestidad. Pocas personas llegan a verlo tan claro.";
-        if (/(delegar|confia|soltar|control|pedir ayuda|equipo)/.test(text))
+        if (delegationPattern.test(text))
           return "Soltar el control y confiar en el equipo es de los aprendizajes más difíciles para quien está acostumbrado a cargar con todo.";
+
+        // Fallback por opción detectada cuando el texto es ambiguo.
+        if (matchedOption?.id === "B") {
+          return "El manejo del tiempo y las prioridades es de las áreas más comunes y también más trabajables cuando hay consciencia.";
+        }
+        if (matchedOption?.id === "A") {
+          return "Nombrar la comunicación como área de mejora requiere honestidad. Pocas personas llegan a verlo tan claro.";
+        }
+        if (matchedOption?.id === "C") {
+          return "Soltar el control y confiar en el equipo es de los aprendizajes más difíciles para quien está acostumbrado a cargar con todo.";
+        }
       }
 
       // Step 8: qué más te ayudaría para crecer
@@ -1333,7 +1349,7 @@ ${followUpEmailLine}
       return null;
     };
 
-    const stepInsight = detectStepSpecificInsight(normalized, stepIndex);
+    const stepInsight = detectStepSpecificInsight(normalized, stepIndex, selectedOption);
     const challenge = detectChallenge(normalized);
     const action = detectAction(normalized);
 
