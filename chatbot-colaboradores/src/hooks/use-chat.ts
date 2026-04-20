@@ -333,13 +333,13 @@ const STEPS: StepDefinition[] = [
       {
         id: "A",
         label: "Comunicar mejor y decir lo que pienso a tiempo",
-        keywords: ["comunicar", "asertivo", "asertiva", "expresar", "decir", "hablar"],
+        keywords: ["comunicar", "asertivo", "asertiva", "expresar", "hablar", "hablar claro", "comunicacion"],
         opportunities: ["comunicacion", "asertividad"],
       },
       {
         id: "B",
         label: "Ordenar prioridades y manejar mejor mi tiempo",
-        keywords: ["tiempo", "prioridad", "foco", "organizacion", "organización", "plan"],
+        keywords: ["tiempo", "tiempos", "prioridad", "prioridades", "foco", "organizacion", "organización", "plan", "administrar", "agenda"],
         opportunities: ["gestion_tiempo", "orientacion_resultados"],
       },
       {
@@ -1009,10 +1009,12 @@ export function useChat() {
     if (!step) return null;
 
     const normalized = normalize(input);
-    const first = normalized.charAt(0).toUpperCase();
-
-    const byLetter = step.options.find((opt) => opt.id === first);
-    if (byLetter) return byLetter;
+    const compact = normalized.replace(/[\s.,;:!?()\-_/]/g, "");
+    // Only accept direct option shortcuts when the whole answer is just A/B/C.
+    if (compact === "a" || compact === "b" || compact === "c") {
+      const byLetter = step.options.find((opt) => opt.id.toLowerCase() === compact);
+      if (byLetter) return byLetter;
+    }
 
     const explicitOption = step.options.find((opt) => normalized.includes(`opcion ${opt.id.toLowerCase()}`) || normalized.includes(`opción ${opt.id.toLowerCase()}`));
     if (explicitOption) return explicitOption;
@@ -1292,10 +1294,10 @@ ${followUpEmailLine}
 
       // Step 7: qué te está costando más mejorar
       if (stepIdx === 7) {
-        if (/(comunicar|decir|hablar|expresar|asertiv|tiempo)/.test(text))
-          return "Nombrar la comunicación como área de mejora requiere honestidad. Pocas personas llegan a verlo tan claro.";
-        if (/(prioridad|organizacion|organización|foco|tiempo|agenda|plan)/.test(text))
+        if (/(tiempo|tiempos|prioridad|prioridades|organizacion|organización|foco|agenda|administ|planific)/.test(text))
           return "El manejo del tiempo y las prioridades es de las áreas más comunes y también más trabajables cuando hay consciencia.";
+        if (/(comunicar|comunicacion|hablar|expresar|asertiv)/.test(text))
+          return "Nombrar la comunicación como área de mejora requiere honestidad. Pocas personas llegan a verlo tan claro.";
         if (/(delegar|confia|soltar|control|pedir ayuda|equipo)/.test(text))
           return "Soltar el control y confiar en el equipo es de los aprendizajes más difíciles para quien está acostumbrado a cargar con todo.";
       }
