@@ -283,11 +283,11 @@ const deliverableTemplates: Record<DeliverableType, { label: string; prompts: st
     ]
   },
   'custom': {
-    label: 'Formato libre',
+    label: 'Evidencia por curso',
     prompts: [
-      'Punto clave 1',
-      'Punto clave 2',
-      'Punto clave 3'
+      '¿Qué situación o reto abordaste?',
+      '¿Qué hiciste diferente gracias al recurso?',
+      '¿Qué resultado o aprendizaje obtuviste?'
     ]
   }
 };
@@ -296,7 +296,7 @@ const deliverableTypeLabels: Record<DeliverableType, string> = {
   'mini-case': 'Mini caso aplicado',
   'learning-summary': 'Resumen de aprendizaje',
   'tool-explainer': 'Explicación de herramienta',
-  'custom': 'Formato libre'
+  'custom': 'Evidencia por curso'
 };
 
 const normalizePromptText = (value: string): string => {
@@ -357,15 +357,18 @@ export function ResultsScreen({ messages, onRestart, onBackToChat, profile, empl
   }, [content, resourcesFromProgress]);
   const derivedProgress = useMemo(() => {
     const deliverables = progress?.deliverables || [];
-    const maxCompletedFromDeliverables = deliverables.reduce((max, deliverable) => {
-      const completed = deliverable.completedResources?.length || 0;
-      return Math.max(max, completed);
-    }, 0);
+    const completedFromDeliverables = new Set(
+      deliverables.flatMap((deliverable) =>
+        (deliverable.completedResources || [])
+          .map((resource) => normalizeTitle(resource))
+          .filter(Boolean)
+      )
+    ).size;
 
     const total = Math.max(progress?.totalResourcesCount || 0, recommendedResources.length || 0, 1);
     const completed = Math.min(
       total,
-      Math.max(progress?.completedResourcesCount || 0, maxCompletedFromDeliverables),
+      Math.max(progress?.completedResourcesCount || 0, completedFromDeliverables),
     );
     const percentage = Math.min(100, Math.round((completed / total) * 100));
 

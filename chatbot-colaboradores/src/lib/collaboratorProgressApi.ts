@@ -414,6 +414,17 @@ const normalizeDeliverables = (value: unknown, fallbackSubmittedAt?: string): De
     .filter((record): record is DeliverableRecord => Boolean(record));
 };
 
+const countUniqueCompletedResources = (deliverables: DeliverableRecord[]): number => {
+  const seen = new Set<string>();
+  for (const deliverable of deliverables) {
+    for (const resource of deliverable.completedResources || []) {
+      const key = normalizeText(resource);
+      if (key) seen.add(key);
+    }
+  }
+  return seen.size;
+};
+
 const normalizeProgressRecord = (value: unknown): CollaboratorProgress | null => {
   if (!value || typeof value !== "object") return null;
 
@@ -452,8 +463,9 @@ const normalizeProgressRecord = (value: unknown): CollaboratorProgress | null =>
     assignedResources.length || 1,
     1,
   );
+  const completedFromDeliverables = countUniqueCompletedResources(deliverables);
   const completedResourcesCount = Math.min(
-    Math.max(toFiniteNumber(raw.completedResourcesCount, 0), 0),
+    Math.max(toFiniteNumber(raw.completedResourcesCount, 0), completedFromDeliverables, 0),
     totalResourcesCount,
   );
   const completionPercentage = Math.min(
@@ -541,9 +553,10 @@ const mergeProgressRecordPair = (
   });
 
   const totalResourcesCount = Math.max(primary.totalResourcesCount, secondary.totalResourcesCount, 1);
+  const completedFromDeliverables = countUniqueCompletedResources(mergedDeliverables);
   const completedResourcesCount = Math.min(
     totalResourcesCount,
-    Math.max(primary.completedResourcesCount, secondary.completedResourcesCount),
+    Math.max(primary.completedResourcesCount, secondary.completedResourcesCount, completedFromDeliverables),
   );
   const completionPercentage = Math.min(
     100,
@@ -610,16 +623,17 @@ const upsertLocalDeliverable = (payload: DeliverablePayload): DeliverableRecord 
     updatedAt: nowIso,
   };
 
-  const completedResourcesCount = payload.completedResources?.length ?? existing.completedResourcesCount;
-  const totalResourcesCount = Math.max(existing.totalResourcesCount, 1);
-  const completionPercentage = Math.min(100, Math.round((completedResourcesCount / totalResourcesCount) * 100));
-
   const record: DeliverableRecord = {
     ...payload,
     collaboratorEmail: email,
     id: `deliv-${Date.now()}`,
     submittedAt: nowIso,
   };
+
+  const nextDeliverables = [...existing.deliverables, record];
+  const totalResourcesCount = Math.max(existing.totalResourcesCount, 1);
+  const completedResourcesCount = Math.min(totalResourcesCount, countUniqueCompletedResources(nextDeliverables));
+  const completionPercentage = Math.min(100, Math.round((completedResourcesCount / totalResourcesCount) * 100));
 
   map[email] = {
     ...existing,
@@ -631,7 +645,7 @@ const upsertLocalDeliverable = (payload: DeliverablePayload): DeliverableRecord 
     totalResourcesCount,
     completionPercentage,
     status: buildProgressStatus(completionPercentage),
-    deliverables: [...existing.deliverables, record],
+    deliverables: nextDeliverables,
     updatedAt: nowIso,
   };
 

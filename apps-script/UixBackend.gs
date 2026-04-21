@@ -143,6 +143,21 @@ function progressStatus_(percentage) {
   return "at-risk";
 }
 
+function uniqueCompletedResourcesCount_(deliverables) {
+  var items = Array.isArray(deliverables) ? deliverables : [];
+  var seen = {};
+
+  for (var i = 0; i < items.length; i++) {
+    var completed = Array.isArray(items[i].completedResources) ? items[i].completedResources : [];
+    for (var j = 0; j < completed.length; j++) {
+      var key = String(completed[j] || "").trim().toLowerCase();
+      if (key) seen[key] = true;
+    }
+  }
+
+  return Object.keys(seen).length;
+}
+
 function upsertProgressRow_(progress) {
   var sheet = getSheet_("collaborator_progress", ["email", "progress_json", "updated_at"]);
   var values = sheet.getDataRange().getValues();
@@ -187,9 +202,11 @@ function syncCollaboratorAssessment_(payload) {
   if (!email) return json_({ ok: false, message: "collaboratorEmail is required" }, 400);
 
   var existing = getProgressByEmail_(email);
+  var existingDeliverables = existing.deliverables || [];
   var resources = payload.assignedResources || existing.assignedResources || [];
   var total = Math.max(resources.length || existing.totalResourcesCount || 1, 1);
-  var completed = Math.min(existing.completedResourcesCount || 0, total);
+  var completedFromDeliverables = uniqueCompletedResourcesCount_(existingDeliverables);
+  var completed = Math.min(Math.max(existing.completedResourcesCount || 0, completedFromDeliverables), total);
   var percentage = Math.min(100, Math.round((completed / total) * 100));
 
   var updated = {
@@ -203,7 +220,7 @@ function syncCollaboratorAssessment_(payload) {
     totalResourcesCount: total,
     completionPercentage: percentage,
     status: progressStatus_(percentage),
-    deliverables: existing.deliverables || [],
+    deliverables: existingDeliverables,
     updatedAt: new Date().toISOString()
   };
 
@@ -232,7 +249,8 @@ function uploadDeliverable_(payload) {
     submittedAt: new Date().toISOString()
   };
 
-  var completed = (payload.completedResources || []).length;
+  var nextDeliverables = deliverables.concat([record]);
+  var completed = uniqueCompletedResourcesCount_(nextDeliverables);
   var total = Math.max(existing.totalResourcesCount || 1, 1);
   var percentage = Math.min(100, Math.round((completed / total) * 100));
 
@@ -247,7 +265,7 @@ function uploadDeliverable_(payload) {
     totalResourcesCount: total,
     completionPercentage: percentage,
     status: progressStatus_(percentage),
-    deliverables: deliverables.concat([record]),
+    deliverables: nextDeliverables,
     updatedAt: new Date().toISOString()
   };
 
