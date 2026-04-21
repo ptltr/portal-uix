@@ -20,9 +20,40 @@ const statusMeta: Record<CollaboratorProgress['status'], { label: string; tone: 
   'completed': { label: 'Completado', tone: 'text-emerald-300', chip: 'rgba(16,185,129,0.14)' },
 };
 
-const getDisplayStatus = (collaborator: CollaboratorProgress): CollaboratorProgress['status'] => {
+const getProgressMetrics = (collaborator: CollaboratorProgress) => {
   const total = Math.max(collaborator.totalResourcesCount, collaborator.assignedResources.length, 1);
-  const completed = Math.min(collaborator.completedResourcesCount, total);
+  const completedByDeliverables = new Set(
+    collaborator.deliverables.flatMap((deliverable) =>
+      (deliverable.completedResources || [])
+        .map((resource) => normalizeText(resource))
+        .filter(Boolean)
+    )
+  ).size;
+  const completedByPercentage = Math.round((Math.max(collaborator.completionPercentage, 0) / 100) * total);
+  const completed = Math.min(
+    total,
+    Math.max(collaborator.completedResourcesCount, completedByDeliverables, completedByPercentage),
+  );
+  const percentage = Math.min(100, Math.round((completed / total) * 100));
+  return { total, completed, percentage };
+};
+
+const getLatestDeliverable = (collaborator: CollaboratorProgress) => {
+  if (!collaborator.deliverables.length) return null;
+
+  return collaborator.deliverables.reduce((latest, current) => {
+    const latestTime = Date.parse(latest.submittedAt || '');
+    const currentTime = Date.parse(current.submittedAt || '');
+    return currentTime >= latestTime ? current : latest;
+  });
+};
+
+const getSafeEvidenceUrls = (deliverable: CollaboratorProgress['deliverables'][number]): string[] => {
+  return (deliverable.evidenceUrls || []).filter((url) => /^https?:\/\//i.test(String(url || '').trim()));
+};
+
+const getDisplayStatus = (collaborator: CollaboratorProgress): CollaboratorProgress['status'] => {
+  const { total, completed } = getProgressMetrics(collaborator);
 
   if (completed >= total) return 'completed';
   if (completed > 0) return 'on-track';
@@ -30,8 +61,7 @@ const getDisplayStatus = (collaborator: CollaboratorProgress): CollaboratorProgr
 };
 
 const getPendingResourcesCount = (collaborator: CollaboratorProgress): number => {
-  const total = Math.max(collaborator.totalResourcesCount, collaborator.assignedResources.length, 1);
-  const completed = Math.min(collaborator.completedResourcesCount, total);
+  const { total, completed } = getProgressMetrics(collaborator);
   return Math.max(total - completed, 0);
 };
 
@@ -301,9 +331,10 @@ export default function Formador() {
           {trainerFilter && !loading && !error && filteredCollaborators.map((collaborator) => {
             const statusKey = getDisplayStatus(collaborator);
             const status = statusMeta[statusKey];
-            const total = Math.max(collaborator.totalResourcesCount, collaborator.assignedResources.length, 1);
-            const completed = Math.min(collaborator.completedResourcesCount, total);
-            const pending = Math.max(total - completed, 0);
+            const progressMetrics = getProgressMetrics(collaborator);
+            const pending = Math.max(progressMetrics.total - progressMetrics.completed, 0);
+            const latestDeliverable = getLatestDeliverable(collaborator);
+            const latestDeliverableEvidenceUrls = latestDeliverable ? getSafeEvidenceUrls(latestDeliverable) : [];
 
             return (
               <article key={collaborator.collaboratorEmail} className="glass-card rounded-2xl border border-white/10 p-5 space-y-4">
@@ -322,20 +353,44 @@ export default function Formador() {
                 <div className="space-y-2">
                   <div className="flex justify-between text-xs text-muted-foreground">
                     <span>Avance</span>
-                    <span className="text-foreground font-medium">{collaborator.completionPercentage}%</span>
+                    <span className="text-foreground font-medium">{progressMetrics.percentage}%</span>
                   </div>
-                  <Progress value={collaborator.completionPercentage} className="h-3 bg-white/10" />
+                  <Progress value={progressMetrics.percentage} className="h-3 bg-white/10" />
                 </div>
 
                 <div className="grid gap-2 text-xs text-muted-foreground md:grid-cols-4">
-                  <p>Total recursos: <span className="text-foreground">{total}</span></p>
-                  <p>Completados: <span className="text-foreground">{completed}</span></p>
+                  <p>Total recursos: <span className="text-foreground">{progressMetrics.total}</span></p>
+                  <p>Completados: <span className="text-foreground">{progressMetrics.completed}</span></p>
                   <p>Pendientes: <span className="text-foreground">{pending}</span></p>
                   <p>Actualizado: <span className="text-foreground">{formatDate(collaborator.updatedAt)}</span></p>
                 </div>
 
                 <div className="text-xs text-muted-foreground">
                   <p>Entregables: <span className="text-foreground">{collaborator.deliverables.length}</span></p>
+                  {latestDeliverable ? (
+                    <div className="mt-2 space-y-1.5">
+                      <p className="text-foreground">Último entregable: {latestDeliverable.title || 'Sin título'}</p>
+                      {latestDeliverable.summary ? (
+                        <p className="text-muted-foreground whitespace-pre-wrap">{latestDeliverable.summary}</p>
+                      ) : null}
+                      {latestDeliverableEvidenceUrls.length ? (
+                        <ul className="space-y-1 text-sm">
+                          {latestDeliverableEvidenceUrls.map((url) => (
+                            <li key={url}>
+                              <a
+                                href={url}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="text-sky-300 hover:text-sky-200 underline break-all"
+                              >
+                                {url}
+                              </a>
+                            </li>
+                          ))}
+                        </ul>
+                      ) : null}
+                    </div>
+                  ) : null}
                 </div>
               </article>
             );

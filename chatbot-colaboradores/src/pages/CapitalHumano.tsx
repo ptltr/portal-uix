@@ -12,15 +12,35 @@ const statusMeta: Record<CollaboratorProgress['status'], { label: string; tone: 
   'completed': { label: 'Completado', tone: 'text-emerald-300', chip: 'rgba(16,185,129,0.14)' },
 };
 
-const getPendingResourcesCount = (collaborator: CollaboratorProgress): number => {
+const getProgressMetrics = (collaborator: CollaboratorProgress) => {
   const total = Math.max(collaborator.totalResourcesCount, collaborator.assignedResources.length, 1);
-  const completed = Math.min(collaborator.completedResourcesCount, total);
+  const completedByDeliverables = new Set(
+    collaborator.deliverables.flatMap((deliverable) =>
+      (deliverable.completedResources || [])
+        .map((resource) => normalizeText(resource))
+        .filter(Boolean)
+    )
+  ).size;
+  const completedByPercentage = Math.round((Math.max(collaborator.completionPercentage, 0) / 100) * total);
+  const completed = Math.min(
+    total,
+    Math.max(collaborator.completedResourcesCount, completedByDeliverables, completedByPercentage),
+  );
+  const percentage = Math.min(100, Math.round((completed / total) * 100));
+  return { total, completed, percentage };
+};
+
+const getSafeEvidenceUrls = (deliverable: CollaboratorProgress['deliverables'][number]): string[] => {
+  return (deliverable.evidenceUrls || []).filter((url) => /^https?:\/\//i.test(String(url || '').trim()));
+};
+
+const getPendingResourcesCount = (collaborator: CollaboratorProgress): number => {
+  const { total, completed } = getProgressMetrics(collaborator);
   return Math.max(total - completed, 0);
 };
 
 const getDisplayStatus = (collaborator: CollaboratorProgress): CollaboratorProgress['status'] => {
-  const total = Math.max(collaborator.totalResourcesCount, collaborator.assignedResources.length, 1);
-  const completed = Math.min(collaborator.completedResourcesCount, total);
+  const { total, completed } = getProgressMetrics(collaborator);
 
   if (completed >= total) return 'completed';
   if (completed > 0) return 'on-track';
@@ -389,9 +409,11 @@ export default function CapitalHumano() {
             <div className="space-y-4">
               {collaborators.map((collaborator) => {
                 const meta = statusMeta[getDisplayStatus(collaborator)];
+                const progressMetrics = getProgressMetrics(collaborator);
                 const pendingResources = getPendingResourcesCount(collaborator);
                 const latestRelatedDeliverable = getLatestDeliverable(collaborator, true);
                 const latestDeliverable = getLatestDeliverable(collaborator, false);
+                const latestDeliverableEvidenceUrls = latestDeliverable ? getSafeEvidenceUrls(latestDeliverable) : [];
                 const latestDeliverableCourseName = latestDeliverable
                   ? getDeliverableCourseName(collaborator, latestDeliverable)
                   : null;
@@ -457,9 +479,9 @@ export default function CapitalHumano() {
                     <div>
                       <div className="mb-2 flex items-center justify-between text-sm">
                         <span className="text-muted-foreground">Progreso</span>
-                        <span className="font-semibold text-foreground">{collaborator.completionPercentage}%</span>
+                        <span className="font-semibold text-foreground">{progressMetrics.percentage}%</span>
                       </div>
-                      <Progress value={collaborator.completionPercentage} className="h-3 bg-white/10" />
+                      <Progress value={progressMetrics.percentage} className="h-3 bg-white/10" />
                     </div>
 
                     <div className="grid gap-3 md:grid-cols-[1fr,1fr,0.8fr]">
@@ -490,6 +512,25 @@ export default function CapitalHumano() {
                               </span>
                             </div>
                             <p className="text-sm text-muted-foreground whitespace-pre-wrap">{latestDeliverable.summary}</p>
+                            {latestDeliverableEvidenceUrls.length ? (
+                              <div className="space-y-1.5">
+                                <p className="text-xs text-muted-foreground">Evidencia compartida</p>
+                                <ul className="space-y-1 text-sm">
+                                  {latestDeliverableEvidenceUrls.map((url) => (
+                                    <li key={url}>
+                                      <a
+                                        href={url}
+                                        target="_blank"
+                                        rel="noreferrer"
+                                        className="text-sky-300 hover:text-sky-200 underline break-all"
+                                      >
+                                        {url}
+                                      </a>
+                                    </li>
+                                  ))}
+                                </ul>
+                              </div>
+                            ) : null}
                             <div className="mt-3 pt-2 border-t border-white/10">
                               <p className="text-sm font-medium text-foreground">Fecha de actualización: {latestDeliverableUpdatedAtLabel}</p>
                             </div>
@@ -502,7 +543,7 @@ export default function CapitalHumano() {
                       <div className="rounded-2xl border border-white/8 bg-white/5 p-4">
                         <p className="text-xs text-muted-foreground">Métricas rápidas</p>
                         <div className="mt-3 space-y-2 text-sm text-foreground">
-                          <p>{collaborator.completedResourcesCount}/{collaborator.totalResourcesCount} recursos completados</p>
+                          <p>{progressMetrics.completed}/{progressMetrics.total} recursos completados</p>
                           <p>{collaborator.deliverables.length} entregable(s) registrados</p>
                           <p>Última actualización de entregable: {latestDeliverableUpdatedAtLabel}</p>
                           {collaborator.latestAssessmentId ? <p>Evaluación {collaborator.latestAssessmentId}</p> : null}
