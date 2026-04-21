@@ -373,6 +373,11 @@ export function ResultsScreen({ messages, onRestart, onBackToChat, profile, empl
   }, [progress, recommendedResources]);
 
   useEffect(() => {
+    // Keep each collaborator's deliverable form independent.
+    setSelectedResources([]);
+  }, [employeeEmail]);
+
+  useEffect(() => {
     let isMounted = true;
 
     const loadProgress = async () => {
@@ -391,7 +396,6 @@ export function ResultsScreen({ messages, onRestart, onBackToChat, profile, empl
         if (!shouldSync) {
           if (!isMounted) return;
           setProgress(existing);
-          setSelectedResources([]);
           return;
         }
 
@@ -407,7 +411,6 @@ export function ResultsScreen({ messages, onRestart, onBackToChat, profile, empl
         const refreshed = await getCollaboratorProgress(employeeEmail);
         if (!isMounted) return;
         setProgress(refreshed);
-        setSelectedResources([]);
       } catch (error) {
         if (!isMounted) return;
         setProgressError('No fue posible cargar el avance del colaborador.');
@@ -473,6 +476,7 @@ export function ResultsScreen({ messages, onRestart, onBackToChat, profile, empl
       setDeliverableType('mini-case');
       setTemplateResponses(['', '', '']);
       setEvidenceUrls('');
+      setSelectedResources([]);
     } catch (error) {
       setProgressError('No fue posible registrar el entregable. Intenta nuevamente.');
     } finally {
