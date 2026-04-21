@@ -391,7 +391,7 @@ export function ResultsScreen({ messages, onRestart, onBackToChat, profile, empl
         if (!shouldSync) {
           if (!isMounted) return;
           setProgress(existing);
-          setSelectedResources(existing.deliverables.at(-1)?.completedResources || []);
+          setSelectedResources([]);
           return;
         }
 
@@ -407,7 +407,7 @@ export function ResultsScreen({ messages, onRestart, onBackToChat, profile, empl
         const refreshed = await getCollaboratorProgress(employeeEmail);
         if (!isMounted) return;
         setProgress(refreshed);
-        setSelectedResources(refreshed.deliverables.at(-1)?.completedResources || []);
+        setSelectedResources([]);
       } catch (error) {
         if (!isMounted) return;
         setProgressError('No fue posible cargar el avance del colaborador.');
