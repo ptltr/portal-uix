@@ -384,6 +384,14 @@ const normalizeResourceList = (value: unknown): string[] => {
     .filter(Boolean);
 };
 
+const normalizeResourceKey = (value: string): string => {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .trim();
+};
+
 const normalizeDeliverables = (value: unknown, fallbackSubmittedAt?: string): DeliverableRecord[] => {
   if (!Array.isArray(value)) return [];
 
@@ -418,7 +426,7 @@ const countUniqueCompletedResources = (deliverables: DeliverableRecord[]): numbe
   const seen = new Set<string>();
   for (const deliverable of deliverables) {
     for (const resource of deliverable.completedResources || []) {
-      const key = normalizeText(resource);
+      const key = normalizeResourceKey(String(resource || ""));
       if (key) seen.add(key);
     }
   }
