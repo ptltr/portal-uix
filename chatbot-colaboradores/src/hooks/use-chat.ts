@@ -712,7 +712,7 @@ const formatQuestionWithOptions = (name: string, flow: AssessmentFlow | null, in
     ? `Hola ${name || "colaborador"}. Tendremos una conversación guiada, breve y concreta.\n\n`
     : "";
 
-  return `${intro}${question.prompt}\n\n- **A)** ${question.options.A}\n- **B)** ${question.options.B}\n- **C)** ${question.options.C}\n\nRespóndeme solo con **A**, **B** o **C**.`;
+  return `${intro}${question.prompt}\n\n- **A)** ${question.options.A}\n- **B)** ${question.options.B}\n- **C)** ${question.options.C}`;
 };
 
 const buildAssistantPromptForInvalidAnswer = (flow: AssessmentFlow | null): string => {
@@ -939,7 +939,16 @@ const advanceAssessmentFlow = (flow: AssessmentFlow, answer: OptionId) => {
   };
 };
 
-const buildTransitionMessage = (): string => "Gracias por tu respuesta.";
+const buildTransitionMessage = (): string => {
+  const variants = [
+    "Gracias, lo tomo en cuenta.",
+    "Perfecto, seguimos.",
+    "Excelente, avancemos.",
+    "Muy bien, continuamos.",
+    "Anotado, pasemos a la siguiente.",
+  ];
+  return variants[Math.floor(Math.random() * variants.length)];
+};
 
 export function useChat() {
   const hasHydratedRef = useRef(false);
