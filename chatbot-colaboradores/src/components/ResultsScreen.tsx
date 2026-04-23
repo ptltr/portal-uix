@@ -93,6 +93,8 @@ const normalizeTitle = (value: string): string => {
     .trim();
 };
 
+  const INTERNAL_WORKSHOP_URL = 'https://ptltr.github.io/portal-uix/#talleres-uix';
+
 const getInternalWorkshopBenefitByTitle = (title: string): string => {
   const normalized = normalizeTitle(title);
 
@@ -175,7 +177,7 @@ const getExternalResourceMetaByTitle = (title: string, index: number) => {
       title,
       type: 'Taller UIX · gratuito',
       why: getInternalWorkshopBenefitByTitle(title),
-      url: 'Disponible internamente en UIX. Acércate con Capital Humano para más información.',
+      url: INTERNAL_WORKSHOP_URL,
     };
   }
 
@@ -210,8 +212,8 @@ const mergeAssignedResourcesIntoReport = (reportContent: string, assignedResourc
   if (!reportContent) return reportContent;
 
   const current = parseRecommendedResourceTitles(reportContent);
-  const hasInternalLinks = /Disponible internamente en UIX|Acércate con Capital Humano/i.test(reportContent);
-  const shouldReplaceResources = assignedResources.length > 0 || current.length < 5 || hasInternalLinks;
+  // Preserve the resources block created by the guided report and only backfill when missing.
+  const shouldReplaceResources = current.length === 0;
   if (!shouldReplaceResources) return reportContent;
 
   const replacementBlock = `### Recursos recomendados\n${buildResourceSectionFromAssigned(assignedResources)}`;
