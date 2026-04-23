@@ -712,7 +712,11 @@ const formatQuestionWithOptions = (name: string, flow: AssessmentFlow | null, in
     ? `Hola ${name || "colaborador"}. Tendremos una conversación guiada, breve y concreta.\n\n`
     : "";
 
-  return `${intro}${question.prompt}\n\n- **A)** ${question.options.A}\n- **B)** ${question.options.B}\n- **C)** ${question.options.C}`;
+  const followUpLead = flow.pendingQuestion === "q2"
+    ? "Con base en lo que respondiste, quiero profundizar un poco:\n\n"
+    : "";
+
+  return `${intro}${followUpLead}${question.prompt}\n\n- **A)** ${question.options.A}\n- **B)** ${question.options.B}\n- **C)** ${question.options.C}`;
 };
 
 const buildAssistantPromptForInvalidAnswer = (flow: AssessmentFlow | null): string => {
