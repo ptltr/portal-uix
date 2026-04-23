@@ -45,7 +45,6 @@ const PROFILES = [
     hasSubProfiles: true,
   },
   { id: 'product', label: 'Product Designer', icon: '🧩', desc: 'Diseño estratégico de productos digitales', hasSubProfiles: false },
-  { id: 'service', label: 'Service Designer', icon: '🗺️', desc: 'Diseño de servicios y visión sistémica', hasSubProfiles: false },
   { id: 'cs', label: 'Customer Success', icon: '🚀', desc: 'Gestión de clientes y estrategia de diseño', hasSubProfiles: false },
 ];
 
