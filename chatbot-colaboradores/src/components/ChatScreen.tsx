@@ -111,7 +111,7 @@ export function ChatScreen({
               {profile && (
                 <span className="text-xs px-2 py-0.5 rounded-full font-medium"
                   style={{ background: 'rgba(123,63,217,0.15)', color: 'hsl(267 75% 70%)' }}>
-                  {profile} · {level}
+                  {profile}
                 </span>
               )}
             </div>
@@ -171,10 +171,10 @@ export function ChatScreen({
                 </div>
               </div>
               <h3 className="text-xl font-display font-semibold text-foreground">
-                ¡Hola! Vamos a evaluar tus habilidades.
+                Conversación guiada de desarrollo
               </h3>
               <p className="text-muted-foreground max-w-md mx-auto text-sm leading-relaxed">
-                Escribe un mensaje para comenzar. Te haré algunas preguntas sobre tu rol actual, tus desafíos y metas profesionales.
+                Responde cada pregunta con A, B o C. El asistente irá recorriendo competencias clave según tu perfil y al final te entregará un resumen práctico.
               </p>
             </motion.div>
           )}

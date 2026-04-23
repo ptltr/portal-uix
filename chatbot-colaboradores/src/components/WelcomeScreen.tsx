@@ -93,13 +93,13 @@ export function WelcomeScreen({
       await new Promise(resolve => setTimeout(resolve, 500));
       return {
         id: Date.now(), // Mock conversation ID
-        title: `Evaluación ${profile} — ${new Date().toLocaleDateString('es-MX')}`,
+        title: `Conversación guiada ${profile} — ${new Date().toLocaleDateString('es-MX')}`,
         profile,
-        level: 'Auto',
+        level: '',
       };
     },
     onSuccess: (data) => {
-      onStart(data.id, selectedProfile, 'Auto', userName.trim(), userEmail.trim(), trainerName.trim());
+      onStart(data.id, selectedProfile, '', userName.trim(), userEmail.trim(), trainerName.trim());
     },
   });
 
@@ -283,7 +283,7 @@ export function WelcomeScreen({
             <span className="gradient-text">potencial</span>
           </h1>
           <p className="text-muted-foreground text-sm leading-relaxed mt-3 max-w-sm">
-            Identifica tus áreas de oportunidad en habilidades blandas y recibe recomendaciones personalizadas para tu crecimiento en UIX.
+            Ten una conversación guiada para identificar fortalezas y áreas de desarrollo en habilidades blandas, con recomendaciones prácticas para tu trabajo diario.
           </p>
         </motion.div>
 
@@ -299,9 +299,9 @@ export function WelcomeScreen({
             >
               <div className="grid grid-cols-3 gap-3 mb-2">
                 {[
-                  { label: '6-8 preguntas', icon: '💬' },
+                  { label: 'Preguntas guiadas', icon: '💬' },
                   { label: '~5 minutos', icon: '⏱️' },
-                  { label: '5 recursos', icon: '📚' },
+                  { label: 'Opciones A/B/C', icon: '🧭' },
                 ].map(item => (
                   <div key={item.label} className="glass-card rounded-2xl p-3 text-center border border-white/8">
                     <div className="text-xl mb-1">{item.icon}</div>
@@ -329,7 +329,7 @@ export function WelcomeScreen({
                     }}
                     className="w-full group flex items-center justify-center gap-2.5 py-4 rounded-2xl font-semibold text-foreground glass-card border border-white/12 hover:border-white/25 transition-all duration-200"
                   >
-                    <span>Iniciar nueva evaluación</span>
+                    <span>Iniciar nueva conversación</span>
                   </button>
                 </div>
               ) : (
@@ -337,7 +337,7 @@ export function WelcomeScreen({
                   onClick={() => setStep('profile')}
                   className="w-full group flex items-center justify-center gap-2.5 py-4 rounded-2xl font-semibold text-white btn-brand"
                 >
-                  <span>Comenzar evaluación</span>
+                  <span>Comenzar conversación guiada</span>
                   <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform duration-200" />
                 </button>
               )}
@@ -544,7 +544,7 @@ export function WelcomeScreen({
                   (!canStart || createConversation.isPending) && 'opacity-40 cursor-not-allowed hover:transform-none'
                 )}
               >
-                <span>{createConversation.isPending ? 'Preparando tu evaluación...' : 'Iniciar mi evaluación'}</span>
+                <span>{createConversation.isPending ? 'Preparando tu conversación...' : 'Iniciar mi conversación guiada'}</span>
                 {!createConversation.isPending && (
                   <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform duration-200" />
                 )}
@@ -556,7 +556,7 @@ export function WelcomeScreen({
                     Detectamos una conversación anterior para este correo.
                   </p>
                   <p className="text-xs text-amber-100/90 leading-relaxed">
-                    Si inicias una nueva evaluación, comenzarás desde cero en esta sesión. Tu conversación anterior seguirá disponible para retomar después.
+                    Si inicias una nueva conversación, comenzarás desde cero en esta sesión. Tu historial anterior seguirá disponible para retomar después.
                   </p>
                   <div className="grid gap-2 sm:grid-cols-2">
                     <button

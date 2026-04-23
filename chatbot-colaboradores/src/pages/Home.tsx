@@ -127,7 +127,7 @@ export default function Home() {
   const handleStart = (id: number, profile: string, level: string, userName: string, userEmail: string, userTrainerName: string) => {
     // Start a fresh runtime flow but preserve saved history in case the click was accidental.
     setIsStartingConversation(true);
-    startNewEvaluation();
+    startNewEvaluation(profile);
     setConversationId(id);
     setSelectedProfile(profile);
     setSelectedLevel(level);

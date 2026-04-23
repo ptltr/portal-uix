@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback, useEffect } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { getCollaboratorProgress, syncCollaboratorAssessment } from "@/lib/collaboratorProgressApi";
 import { fetchSessionByEmail, hasSessionByEmail, saveSessionByEmail } from "@/lib/chatSessionApi";
 
@@ -10,22 +10,47 @@ export interface ChatMessage {
   content: string;
 }
 
-type ContextualResponse = {
-  text: string;
-  followUpTriggered: boolean;
+type OptionId = "A" | "B" | "C";
+type ProfileKey = "ux-ui" | "product" | "customer-success";
+type Classification = "solid" | "functional-strong" | "functional-developing" | "opportunity" | "priority" | "emergent";
+
+type QuestionDefinition = {
+  prompt: string;
+  options: Record<OptionId, string>;
 };
 
-type OptionDefinition = {
-  id: "A" | "B" | "C";
+type ActionRecommendation = {
+  title: string;
+  description: string;
+};
+
+type CompetencyDefinition = {
+  key: string;
   label: string;
-  keywords: string[];
-  strengths?: string[];
-  opportunities?: string[];
+  strengthDescription: string;
+  opportunityDescription: string;
+  actions: ActionRecommendation[];
+  questions: {
+    q1: QuestionDefinition;
+    q2: QuestionDefinition;
+  };
 };
 
-type StepDefinition = {
-  question: string;
-  options: OptionDefinition[];
+type AssessmentEntry = {
+  competencyKey: string;
+  q1?: OptionId;
+  q2?: OptionId;
+  classification?: Classification;
+  isPriority?: boolean;
+};
+
+type AssessmentFlow = {
+  profileKey: ProfileKey;
+  profileLabel: string;
+  competencyOrder: string[];
+  competencyIndex: number;
+  pendingQuestion: "q1" | "q2";
+  assessments: Record<string, AssessmentEntry>;
 };
 
 type SignalState = {
@@ -46,6 +71,8 @@ export interface PersistedChatState {
   isInFollowUp: boolean;
   signals: SignalState;
   updatedAt: number;
+  selectedProfile?: string;
+  assessmentFlow?: AssessmentFlow | null;
 }
 
 type PartialPersistedChatState = Partial<PersistedChatState> & {
@@ -53,6 +80,499 @@ type PartialPersistedChatState = Partial<PersistedChatState> & {
 };
 
 const CHAT_STORAGE_KEY = "uix-chat-session-v1";
+
+const BASE_COMPETENCIES = [
+  "comunicacion-efectiva",
+  "empatia",
+  "trabajo-en-equipo",
+  "solucion-de-problemas",
+  "autogestion",
+] as const;
+
+const PROFILE_COMPETENCIES: Record<ProfileKey, string[]> = {
+  "ux-ui": ["aprendizaje-continuo", "proactividad"],
+  product: ["asertividad", "toma-de-decisiones", "orientacion-a-resultados", "negociacion"],
+  "customer-success": ["orientacion-al-servicio", "manejo-de-conflictos", "negociacion", "mentalidad-de-negocio"],
+};
+
+const COMPETENCIES: Record<string, CompetencyDefinition> = {
+  "comunicacion-efectiva": {
+    key: "comunicacion-efectiva",
+    label: "Comunicación efectiva",
+    strengthDescription: "Sueles expresar ideas, acuerdos y necesidades con claridad, incluso cuando el contexto exige precisión.",
+    opportunityDescription: "Todavía hay espacio para estructurar mejor tus mensajes y hacer más explícitos acuerdos, expectativas o necesidades.",
+    actions: [
+      {
+        title: "Minuta de acuerdos en 3 líneas",
+        description: "Al cerrar una reunión o conversación clave, resume por escrito objetivo, acuerdo y siguiente paso en un mensaje breve.",
+      },
+      {
+        title: "Pausa antes de responder",
+        description: "Antes de responder en conversaciones tensas, toma 10 segundos para ordenar idea central, contexto y petición concreta.",
+      },
+    ],
+    questions: {
+      q1: {
+        prompt: "Cuando necesitas explicar una idea importante o alinear expectativas, ¿qué suele pasar?",
+        options: {
+          A: "Me cuesta ordenar el mensaje y a veces la otra persona no termina de entender lo que necesito decir.",
+          B: "Logro explicarme, aunque en algunas conversaciones importantes siento que podría ser más claro o más directo.",
+          C: "Suelo comunicarme con claridad y normalmente logro que los acuerdos queden entendidos.",
+        },
+      },
+      q2: {
+        prompt: "Cuando una conversación requiere mayor claridad, ¿cómo reaccionas normalmente?",
+        options: {
+          A: "Improviso y me doy cuenta después de que faltó orden o precisión.",
+          B: "Hago el esfuerzo por ordenar ideas, aunque no siempre cierro acuerdos concretos.",
+          C: "Sintetizo, confirmo entendimiento y dejo claros los siguientes pasos.",
+        },
+      },
+    },
+  },
+  empatia: {
+    key: "empatia",
+    label: "Empatía",
+    strengthDescription: "Sueles considerar el contexto de la otra persona y ajustar tu forma de relacionarte para construir confianza.",
+    opportunityDescription: "Conviene fortalecer tu lectura del contexto ajeno para responder con mayor sensibilidad y menos suposición.",
+    actions: [
+      {
+        title: "Pregunta de contexto antes de proponer",
+        description: "Antes de ofrecer una solución, pregunta qué está viendo o sintiendo la otra persona y qué necesita de ti.",
+      },
+      {
+        title: "Escucha sin interrumpir dos minutos",
+        description: "En una conversación relevante, deja hablar a la otra persona sin interrumpir y luego parafrasea lo entendido.",
+      },
+    ],
+    questions: {
+      q1: {
+        prompt: "Cuando alguien del equipo o un cliente reacciona distinto a lo que esperabas, ¿cómo lo interpretas normalmente?",
+        options: {
+          A: "Me cuesta leer qué le pasa y suelo enfocarme primero en mi propia urgencia o punto de vista.",
+          B: "Intento entender su contexto, aunque no siempre logro leer bien lo que necesita o siente.",
+          C: "Suelo captar bien el contexto de la otra persona y adapto mi forma de responder.",
+        },
+      },
+      q2: {
+        prompt: "Cuando alguien piensa distinto a ti, ¿qué haces con más frecuencia?",
+        options: {
+          A: "Defiendo mi postura rápido y me cuesta detenerme a explorar la perspectiva ajena.",
+          B: "Escucho su punto, aunque a veces me gana la prisa o la necesidad de convencer.",
+          C: "Exploro su contexto antes de responder para construir una salida que haga sentido para ambos.",
+        },
+      },
+    },
+  },
+  "trabajo-en-equipo": {
+    key: "trabajo-en-equipo",
+    label: "Trabajo en equipo y colaboración",
+    strengthDescription: "Tiendes a colaborar con apertura, buscar alineación y construir resultados compartidos con otras personas.",
+    opportunityDescription: "Hay una oportunidad para involucrar mejor a otras personas, compartir contexto y apoyarte más en la colaboración.",
+    actions: [
+      {
+        title: "Check-in de colaboración semanal",
+        description: "Agenda un espacio breve a la semana para revisar bloqueos, apoyos requeridos y próximos pasos con tu equipo.",
+      },
+      {
+        title: "Pedir apoyo con contexto",
+        description: "Cuando necesites ayuda, explica objetivo, avance y bloqueo para facilitar una colaboración más efectiva.",
+      },
+    ],
+    questions: {
+      q1: {
+        prompt: "Cuando trabajas en algo que depende de varias personas, ¿cómo suele ser tu forma de avanzar?",
+        options: {
+          A: "Prefiero resolverlo por mi cuenta y me cuesta coordinar o pedir apoyo a tiempo.",
+          B: "Colaboro cuando hace falta, aunque a veces la coordinación se vuelve reactiva.",
+          C: "Suelo coordinarme bien, compartir contexto y avanzar con otras personas sin perder ritmo.",
+        },
+      },
+      q2: {
+        prompt: "Si el trabajo se empieza a trabar por falta de coordinación, ¿qué haces normalmente?",
+        options: {
+          A: "Sigo avanzando solo o espero a que alguien más lo destrabe.",
+          B: "Busco recoordinar, aunque no siempre lo hago con suficiente anticipación.",
+          C: "Tomo la iniciativa para alinear expectativas, responsables y tiempos de forma clara.",
+        },
+      },
+    },
+  },
+  "solucion-de-problemas": {
+    key: "solucion-de-problemas",
+    label: "Solución de problemas",
+    strengthDescription: "Tienes capacidad para analizar situaciones, identificar rutas de salida y avanzar con criterio ante obstáculos.",
+    opportunityDescription: "Conviene fortalecer la forma en que analizas problemas y conviertes bloqueos en decisiones accionables.",
+    actions: [
+      {
+        title: "Problema-causa-próximo paso",
+        description: "Cuando aparezca un bloqueo, escríbelo en tres columnas: qué pasa, por qué pasa y cuál será el siguiente paso concreto.",
+      },
+      {
+        title: "Dos alternativas antes de escalar",
+        description: "Antes de pedir ayuda, formula al menos dos rutas posibles con sus riesgos y ventajas para decidir con más criterio.",
+      },
+    ],
+    questions: {
+      q1: {
+        prompt: "Cuando aparece un problema inesperado en tu trabajo, ¿qué suele pasar primero?",
+        options: {
+          A: "Me cuesta ordenar la situación y definir por dónde empezar.",
+          B: "Logro avanzar, aunque a veces me toma más tiempo del necesario encontrar una ruta clara.",
+          C: "Suelo descomponer el problema, priorizar y moverme rápido hacia una solución viable.",
+        },
+      },
+      q2: {
+        prompt: "Cuando el problema no tiene una solución obvia, ¿qué haces con más frecuencia?",
+        options: {
+          A: "Me quedo atascado o dependo mucho de que alguien más marque la ruta.",
+          B: "Exploro opciones, aunque me cuesta comparar escenarios o decidir con seguridad.",
+          C: "Analizo alternativas, valoro implicaciones y tomo una decisión con criterio práctico.",
+        },
+      },
+    },
+  },
+  autogestion: {
+    key: "autogestion",
+    label: "Autogestión y responsabilidad",
+    strengthDescription: "Tiendes a organizarte, hacer seguimiento y sostener compromisos con un buen nivel de responsabilidad.",
+    opportunityDescription: "Hay una oportunidad clara para fortalecer priorización, seguimiento y consistencia en tus compromisos diarios.",
+    actions: [
+      {
+        title: "Top 3 del día",
+        description: "Define cada mañana las tres prioridades que sí o sí deben avanzar y revisa al cierre qué quedó resuelto y qué no.",
+      },
+      {
+        title: "Bloque de foco sin interrupciones",
+        description: "Reserva al menos 30 minutos al día para trabajo profundo en la tarea de mayor impacto.",
+      },
+    ],
+    questions: {
+      q1: {
+        prompt: "Cuando tienes varias prioridades al mismo tiempo, ¿cómo suele ser tu manejo del trabajo?",
+        options: {
+          A: "Me cuesta ordenar y sostener el foco; a veces reacciono a la urgencia del momento.",
+          B: "Generalmente logro avanzar, aunque en semanas pesadas mi organización se resiente.",
+          C: "Suelo priorizar bien, dar seguimiento y cumplir con lo importante de forma consistente.",
+        },
+      },
+      q2: {
+        prompt: "Cuando una semana se complica más de lo esperado, ¿qué pasa con tu seguimiento?",
+        options: {
+          A: "Pierdo visibilidad, postergo o dejo de dar seguimiento a cosas importantes.",
+          B: "Hago ajustes y saco lo esencial, aunque con cierta inestabilidad.",
+          C: "Repriorizo rápido, ajusto el plan y mantengo visibilidad sobre compromisos y avances.",
+        },
+      },
+    },
+  },
+  "aprendizaje-continuo": {
+    key: "aprendizaje-continuo",
+    label: "Aprendizaje continuo",
+    strengthDescription: "Sueles buscar nuevas formas de mejorar y convertir experiencias, feedback o práctica en aprendizaje real.",
+    opportunityDescription: "Conviene reforzar hábitos de aprendizaje y apertura al feedback para sostener tu desarrollo en el tiempo.",
+    actions: [
+      {
+        title: "Bitácora de aprendizaje semanal",
+        description: "Cierra la semana anotando qué aprendiste, dónde lo aplicaste y qué quieres probar distinto la siguiente semana.",
+      },
+      {
+        title: "Feedback accionable quincenal",
+        description: "Pide a una persona una observación concreta sobre tu trabajo y conviértela en una acción de prueba para la siguiente quincena.",
+      },
+    ],
+    questions: {
+      q1: {
+        prompt: "En tu trabajo, ¿qué tan presente está el hábito de aprender y ajustar a partir de nuevas experiencias o feedback?",
+        options: {
+          A: "No es algo constante; me cuesta sostener ese hábito o salir de lo conocido.",
+          B: "Sí aparece, aunque de manera irregular o más reactiva que intencional.",
+          C: "Es un hábito bastante presente; busco aprender y ajustar de forma continua.",
+        },
+      },
+      q2: {
+        prompt: "Cuando recibes feedback o detectas algo por mejorar, ¿qué haces normalmente?",
+        options: {
+          A: "Me cuesta transformarlo en un cambio concreto o sostenerlo en el tiempo.",
+          B: "Intento aplicarlo, aunque me falta consistencia para volverlo hábito.",
+          C: "Lo convierto en acciones concretas y le doy seguimiento para que sí cambie mi práctica.",
+        },
+      },
+    },
+  },
+  proactividad: {
+    key: "proactividad",
+    label: "Proactividad",
+    strengthDescription: "Tiendes a anticiparte, proponer mejoras y avanzar sin depender siempre de una instrucción explícita.",
+    opportunityDescription: "Hay espacio para fortalecer la iniciativa personal y pasar de reaccionar a anticiparte con mayor frecuencia.",
+    actions: [
+      {
+        title: "Una mejora por semana",
+        description: "Detecta cada semana una fricción pequeña en tu trabajo y propón una mejora concreta con bajo costo de implementación.",
+      },
+      {
+        title: "Siguiente paso visible",
+        description: "Antes de cerrar una tarea, define el siguiente paso que tú puedes activar sin esperar a que alguien lo pida.",
+      },
+    ],
+    questions: {
+      q1: {
+        prompt: "Cuando identificas una mejora o una oportunidad en tu trabajo, ¿qué suele pasar?",
+        options: {
+          A: "Normalmente espero a que alguien más la pida o la priorice.",
+          B: "A veces la propongo o la muevo, aunque no siempre de forma consistente.",
+          C: "Suelo anticiparme, proponer mejoras y tomar acción con autonomía.",
+        },
+      },
+      q2: {
+        prompt: "Si ves una oportunidad clara para mejorar algo, ¿cómo actúas?",
+        options: {
+          A: "La dejo pasar con frecuencia porque no sé si me toca o si conviene moverla.",
+          B: "La tomo en algunos casos, pero todavía me falta consistencia para sostener esa iniciativa.",
+          C: "La aterrizo, la comunico y doy seguimiento para convertirla en algo real.",
+        },
+      },
+    },
+  },
+  asertividad: {
+    key: "asertividad",
+    label: "Asertividad",
+    strengthDescription: "Sueles expresar tus ideas, límites o desacuerdos de forma clara y respetuosa, incluso en conversaciones delicadas.",
+    opportunityDescription: "Conviene fortalecer tu capacidad para decir lo que piensas con claridad sin postergar conversaciones importantes.",
+    actions: [
+      {
+        title: "Mensaje difícil con estructura",
+        description: "Antes de una conversación incómoda, prepara tres puntos: hecho, impacto y petición concreta.",
+      },
+      {
+        title: "Decirlo a tiempo",
+        description: "Cuando detectes una incomodidad o desacuerdo, aborda el tema en menos de 24 horas con respeto y claridad.",
+      },
+    ],
+    questions: {
+      q1: {
+        prompt: "Cuando necesitas expresar un desacuerdo o marcar un límite, ¿qué suele pasar?",
+        options: {
+          A: "Me cuesta decirlo a tiempo o con claridad; a veces lo pospongo demasiado.",
+          B: "Lo hago en algunas ocasiones, aunque no siempre con la firmeza o claridad que me gustaría.",
+          C: "Suelo expresarlo de forma clara, respetuosa y en el momento adecuado.",
+        },
+      },
+      q2: {
+        prompt: "Cuando la conversación puede ser incómoda, ¿cómo reaccionas normalmente?",
+        options: {
+          A: "Evito la conversación o la doy de forma poco clara.",
+          B: "La tengo, aunque a veces me cuesta sostenerla con firmeza.",
+          C: "La abordo con claridad, respeto y foco en el objetivo.",
+        },
+      },
+    },
+  },
+  "toma-de-decisiones": {
+    key: "toma-de-decisiones",
+    label: "Toma de decisiones",
+    strengthDescription: "Sueles evaluar escenarios y avanzar con criterio, sin quedarte inmóvil ante la ambigüedad.",
+    opportunityDescription: "Hay oportunidad para ganar más claridad y seguridad al decidir, especialmente cuando no existe una respuesta perfecta.",
+    actions: [
+      {
+        title: "Decidir con criterio visible",
+        description: "Cuando tengas que elegir entre opciones, escribe criterios, riesgos y razón final para hacer más sólida tu decisión.",
+      },
+      {
+        title: "Fecha límite para decidir",
+        description: "Pon una hora o día tope para decisiones no críticas y evita extender indefinidamente el análisis.",
+      },
+    ],
+    questions: {
+      q1: {
+        prompt: "Cuando necesitas decidir entre varias opciones con información incompleta, ¿qué suele pasar?",
+        options: {
+          A: "Me cuesta decidir y tiendo a prolongar demasiado el análisis o a depender de otra persona.",
+          B: "Logro decidir, aunque a veces con dudas o después de invertir más tiempo del necesario.",
+          C: "Suelo evaluar con criterio y tomar decisiones razonables sin paralizarme.",
+        },
+      },
+      q2: {
+        prompt: "Cuando ninguna opción es perfecta, ¿cómo avanzas normalmente?",
+        options: {
+          A: "Me trabo o espero a tener mucha más certeza antes de moverme.",
+          B: "Avanzo, aunque me cuesta sostener la seguridad en la decisión tomada.",
+          C: "Defino criterios, comparo escenarios y tomo una decisión suficientemente sólida para avanzar.",
+        },
+      },
+    },
+  },
+  "orientacion-a-resultados": {
+    key: "orientacion-a-resultados",
+    label: "Orientación a resultados",
+    strengthDescription: "Mantienes foco en el objetivo final y conviertes prioridades en avances visibles y medibles.",
+    opportunityDescription: "Conviene reforzar el foco en objetivos concretos para no perder tracción entre tareas, análisis o conversaciones.",
+    actions: [
+      {
+        title: "Definir criterio de éxito",
+        description: "Antes de empezar una tarea relevante, deja por escrito cómo sabrás que quedó bien resuelta.",
+      },
+      {
+        title: "Cierre semanal por impacto",
+        description: "Al final de la semana, revisa qué actividades generaron más avance real y cuáles solo ocuparon tiempo.",
+      },
+    ],
+    questions: {
+      q1: {
+        prompt: "Cuando trabajas en algo importante, ¿qué tan fácil te resulta mantenerte enfocado en el resultado final?",
+        options: {
+          A: "Con frecuencia me pierdo entre tareas, detalles o urgencias y me cuesta sostener foco en el objetivo.",
+          B: "Generalmente mantengo el foco, aunque en momentos de presión puedo dispersarme.",
+          C: "Suelo mantener claridad sobre el objetivo y orientar mis decisiones a lograrlo.",
+        },
+      },
+      q2: {
+        prompt: "Cuando hay presión o muchas cosas al mismo tiempo, ¿qué pasa con ese foco?",
+        options: {
+          A: "Se diluye con facilidad y me cuesta distinguir qué mueve realmente el resultado.",
+          B: "Lo recupero, aunque a veces tarde o con ayuda de otras personas.",
+          C: "Lo sostengo bastante bien y repriorizo sin perder de vista el objetivo central.",
+        },
+      },
+    },
+  },
+  negociacion: {
+    key: "negociacion",
+    label: "Negociación",
+    strengthDescription: "Tiendes a encontrar puntos de acuerdo y a mover conversaciones complejas hacia soluciones viables.",
+    opportunityDescription: "Hay oportunidad para fortalecer tu capacidad de balancear intereses y llegar a acuerdos más claros y sostenibles.",
+    actions: [
+      {
+        title: "Intereses antes que posiciones",
+        description: "En una conversación de negociación, identifica primero qué necesita realmente cada parte antes de defender una solución.",
+      },
+      {
+        title: "Dos concesiones posibles",
+        description: "Antes de negociar, define qué puedes ceder y qué no para entrar con más claridad a la conversación.",
+      },
+    ],
+    questions: {
+      q1: {
+        prompt: "Cuando hay intereses distintos o prioridades encontradas, ¿cómo suele ser tu manejo de la conversación?",
+        options: {
+          A: "Me cuesta encontrar un punto medio y suelo ceder demasiado o quedarme atorado.",
+          B: "Logro avanzar, aunque a veces me falta más estructura para negociar mejor.",
+          C: "Suelo explorar intereses y llegar a acuerdos razonables para las partes involucradas.",
+        },
+      },
+      q2: {
+        prompt: "Cuando una negociación se pone tensa, ¿qué haces normalmente?",
+        options: {
+          A: "Me cuesta sostener la conversación y pierdo claridad sobre lo negociable.",
+          B: "La sostengo, aunque no siempre con una estrategia clara.",
+          C: "Mantengo foco, identifico intereses y conduzco la conversación hacia un acuerdo viable.",
+        },
+      },
+    },
+  },
+  "orientacion-al-servicio": {
+    key: "orientacion-al-servicio",
+    label: "Orientación al servicio",
+    strengthDescription: "Tiendes a anticipar necesidades y a generar una experiencia de acompañamiento clara, útil y confiable.",
+    opportunityDescription: "Conviene reforzar tu capacidad para traducir necesidades del cliente o usuario en respuestas más consistentes y oportunas.",
+    actions: [
+      {
+        title: "Confirmar necesidad real",
+        description: "Antes de responder una solicitud, valida qué problema busca resolver realmente la otra persona.",
+      },
+      {
+        title: "Seguimiento después de resolver",
+        description: "Tras atender una necesidad importante, vuelve a contactar para verificar si la solución sí funcionó.",
+      },
+    ],
+    questions: {
+      q1: {
+        prompt: "Cuando acompañas a una persona usuaria o cliente, ¿qué tan presente está el foco en entender y resolver su necesidad real?",
+        options: {
+          A: "A veces respondo desde la urgencia y no siempre profundizo en lo que realmente necesita.",
+          B: "Generalmente lo considero, aunque no siempre de forma anticipada o consistente.",
+          C: "Suelo entender bien la necesidad y actuar con foco en una experiencia útil y clara.",
+        },
+      },
+      q2: {
+        prompt: "Si la necesidad cambia o la persona sigue inconforme, ¿cómo reaccionas normalmente?",
+        options: {
+          A: "Me cuesta reencuadrar la situación y responder con flexibilidad.",
+          B: "Busco ajustar la respuesta, aunque a veces me gana la urgencia.",
+          C: "Reviso contexto, aclaro expectativas y adapto la respuesta para realmente ayudar.",
+        },
+      },
+    },
+  },
+  "manejo-de-conflictos": {
+    key: "manejo-de-conflictos",
+    label: "Manejo de conflictos",
+    strengthDescription: "Tienes capacidad para abordar tensiones con calma, claridad y foco en la resolución.",
+    opportunityDescription: "Hay oportunidad para dejar de evitar conflictos y aprender a tratarlos de manera más directa y constructiva.",
+    actions: [
+      {
+        title: "Nombrar la tensión sin dramatizar",
+        description: "Cuando detectes una fricción, nómbrala desde el hecho y su impacto, sin interpretar intenciones.",
+      },
+      {
+        title: "Buscar acuerdo mínimo",
+        description: "En una conversación difícil, define cuál es el acuerdo mínimo viable para poder seguir avanzando.",
+      },
+    ],
+    questions: {
+      q1: {
+        prompt: "Cuando surge una tensión o desacuerdo con otra persona, ¿cómo suele ser tu manejo?",
+        options: {
+          A: "Me cuesta abordarlo; tiendo a evitarlo o dejar que pase demasiado tiempo.",
+          B: "Lo atiendo en algunos casos, aunque todavía me cuesta sostener estas conversaciones con comodidad.",
+          C: "Suelo abordarlo de forma directa y respetuosa para resolverlo sin alargarlo más de la cuenta.",
+        },
+      },
+      q2: {
+        prompt: "Cuando el conflicto ya está presente, ¿cómo reaccionas normalmente?",
+        options: {
+          A: "Me cierro, lo pateo o me cuesta sostener la claridad en la conversación.",
+          B: "Intento resolverlo, aunque todavía me pesa emocionalmente más de lo que quisiera.",
+          C: "Mantengo calma, pongo foco en los hechos y conduzco la conversación hacia una salida concreta.",
+        },
+      },
+    },
+  },
+  "mentalidad-de-negocio": {
+    key: "mentalidad-de-negocio",
+    label: "Mentalidad de negocio",
+    strengthDescription: "Sueles conectar tu trabajo con objetivos, impacto y decisiones que importan para el negocio.",
+    opportunityDescription: "Conviene fortalecer la lectura de impacto para conectar mejor tus acciones con objetivos, prioridades y valor para el negocio.",
+    actions: [
+      {
+        title: "Traducir tarea a impacto",
+        description: "Antes de una actividad importante, responde por escrito cómo impacta en cliente, equipo o resultado del negocio.",
+      },
+      {
+        title: "Hablar en lenguaje de impacto",
+        description: "Al presentar avances, explica no solo qué hiciste, sino qué riesgo redujiste, qué oportunidad abriste o qué valor generaste.",
+      },
+    ],
+    questions: {
+      q1: {
+        prompt: "Cuando tomas decisiones en tu rol, ¿qué tan presente está el impacto en cliente, operación o negocio?",
+        options: {
+          A: "No siempre lo tengo visible; suelo enfocarme más en la tarea inmediata.",
+          B: "Lo considero en varias ocasiones, aunque todavía no es un criterio constante.",
+          C: "Suelo conectar mi trabajo con impacto, prioridades y valor para el negocio.",
+        },
+      },
+      q2: {
+        prompt: "Cuando presentas avances o propones algo, ¿cómo lo sueles enmarcar?",
+        options: {
+          A: "Me enfoco más en la actividad realizada que en el impacto o la prioridad de negocio.",
+          B: "Intento conectar con impacto, aunque todavía de forma poco consistente.",
+          C: "Suelo explicar claramente el valor, el riesgo o la oportunidad que mi propuesta mueve.",
+        },
+      },
+    },
+  },
+};
 
 const normalizeIncomingMessages = (value: unknown): ChatMessage[] => {
   const parseJsonIfString = (input: unknown): unknown => {
@@ -90,442 +610,9 @@ const normalizeIncomingMessages = (value: unknown): ChatMessage[] => {
     .filter((msg): msg is ChatMessage => Boolean(msg));
 };
 
-const migrateLegacyReportContent = (report: string): string => {
-  if (!report) return report;
+const migrateLegacyReportContent = (report: string): string => report || "";
 
-  return report
-    .replace(
-      "Biblioteca de libros gratuitos en español",
-      "Work Smarter, Not Harder: Time Management for Personal & Professional Productivity"
-    )
-    .replace(
-      "Te permite acceder a lecturas de desarrollo personal y disciplina que fortalecen hábitos, foco y consistencia.",
-      "Te da herramientas concretas para mejorar foco, planificación y ejecución, con impacto directo en resultados."
-    )
-    .replace(
-      "El ingenioso hidalgo Don Quijote de la Mancha (Miguel de Cervantes)",
-      "Work Smarter, Not Harder: Time Management for Personal & Professional Productivity"
-    )
-    .replace(
-      "Es una lectura clave para fortalecer pensamiento crítico, perspectiva y disciplina intelectual aplicada al trabajo.",
-      "Te da herramientas concretas para mejorar foco, planificación y ejecución, con impacto directo en resultados."
-    )
-    .replace(
-      "Libro gratuito · Project Gutenberg",
-      "Curso en Coursera · opción gratuita"
-    )
-    .replace(
-      "https://www.gutenberg.org/browse/languages/es",
-      "https://www.coursera.org/learn/work-smarter-not-harder"
-    )
-    .replace(
-      "https://www.gutenberg.org/ebooks/2000",
-      "https://www.coursera.org/learn/work-smarter-not-harder"
-    )
-    .replace(
-      "Communicating with Confidence",
-      "Improving Communication Skills"
-    )
-    .replace(
-      "LinkedIn Learning · acceso gratuito por prueba",
-      "Curso en Coursera · opción gratuita"
-    )
-    .replace(
-      "https://www.linkedin.com/learning/communicating-with-confidence",
-      "https://www.coursera.org/learn/wharton-communication-skills"
-    )
-    .replace(
-      /Disponible internamente en UIX(?!\. Acércate con Capital Humano para más información\.)/g,
-      "Disponible internamente en UIX. Consulta con el Área de Capital Humano para más información."
-    )
-    .replace(
-      /Disponible internamente en UIX\. Acércate con Capital Humano para más información\./g,
-      "Disponible internamente en UIX. Consulta con el Área de Capital Humano para más información."
-    )
-    .replace(
-      /Disponible internamente en UIX\. Consulta con tu equipo de seguimiento para más información\./g,
-      "Disponible internamente en UIX. Consulta con el Área de Capital Humano para más información."
-    )
-    .replace(
-      /Recuperado desde tu seguimiento previo en Capital Humano\.?/gi,
-      "Recuperado de tu avance anterior."
-    )
-    .replace(
-      /Recuperamos tu seguimiento desde Capital Humano\.?/gi,
-      "Recuperamos tu avance anterior."
-    )
-    .replace(
-      /Capital Humano puede ver este seguimiento/gi,
-      "El Área de Capital Humano puede ver este avance"
-    )
-    .replace(
-      /Recuperado desde tu seguimiento previo para que puedas retomar tu plan sin perder contexto\.?/gi,
-      "Te ayudará a reforzar tus áreas de oportunidad con acciones prácticas aplicables a tu rol."
-    );
-};
-
-const STEPS: StepDefinition[] = [
-  {
-    question: "Empecemos tranqui: en una semana pesada de trabajo, ¿qué fue lo más retador para ti?",
-    options: [
-      {
-        id: "A",
-        label: "Había mucha presión y me tocó priorizar rápido",
-        keywords: ["presion", "presión", "urgente", "deadline", "rapido", "rápido", "ordenar", "priorizar"],
-        strengths: ["resolucion_problemas", "orientacion_resultados", "adaptabilidad"],
-      },
-      {
-        id: "B",
-        label: "El reto estuvo más en la dinámica con el equipo o con personas",
-        keywords: ["equipo", "personas", "conflicto", "jefe", "compañero", "colega", "relacion", "relación"],
-        strengths: ["empatia", "comunicacion", "trabajo_equipo"],
-      },
-      {
-        id: "C",
-        label: "Fue un reto técnico o de aprender algo nuevo",
-        keywords: ["tecnico", "técnico", "codigo", "código", "sistema", "aprender", "nuevo"],
-        strengths: ["aprendizaje_continuo", "solucion_analitica"],
-      },
-    ],
-  },
-  {
-    question: "En esa situación, ¿qué rol tomaste tú?",
-    options: [
-      {
-        id: "A",
-        label: "Tomé el liderazgo y marqué dirección",
-        keywords: ["lidere", "lideré", "coordine", "coordiné", "dirigi", "dirigí", "responsable"],
-        strengths: ["liderazgo", "asertividad"],
-      },
-      {
-        id: "B",
-        label: "Me enfoqué en ejecutar y sacar lo más importante",
-        keywords: ["ejecute", "ejecuté", "implemente", "implementé", "resolvi", "resolví", "entregue", "entregué"],
-        strengths: ["orientacion_resultados", "resolucion_problemas"],
-      },
-      {
-        id: "C",
-        label: "Apoyé al equipo y ayudé a llegar a acuerdos",
-        keywords: ["apoye", "apoyé", "facilite", "facilité", "acompañe", "acompañé", "ayude", "ayudé"],
-        strengths: ["trabajo_equipo", "escucha", "empatia"],
-      },
-    ],
-  },
-  {
-    question: "Cuando se empezó a poner complicado, ¿qué hiciste primero?",
-    options: [
-      {
-        id: "A",
-        label: "Prioricé y armé un plan de acción",
-        keywords: ["priorice", "prioricé", "plan", "orden", "pasos", "estrategia"],
-        strengths: ["orientacion_resultados", "resolucion_problemas"],
-      },
-      {
-        id: "B",
-        label: "Pedí apoyo y alineé al equipo",
-        keywords: ["pedi", "pedí", "apoyo", "alinear", "equipo", "ayuda", "consenso"],
-        strengths: ["trabajo_equipo", "comunicacion", "escucha"],
-      },
-      {
-        id: "C",
-        label: "Fui probando alternativas hasta encontrar salida",
-        keywords: ["probe", "probé", "iterar", "ajuste", "experimentar", "alternativa"],
-        strengths: ["innovacion", "adaptabilidad", "aprendizaje_continuo"],
-      },
-    ],
-  },
-  {
-    question: "En el lado humano: cuando alguien del equipo te cuestiona, ¿cómo lo sueles manejar?",
-    options: [
-      {
-        id: "A",
-        label: "Lo hablo directo, pero con respeto",
-        keywords: ["converse", "conversé", "hable", "hablé", "directo", "respeto"],
-        strengths: ["asertividad", "comunicacion"],
-      },
-      {
-        id: "B",
-        label: "Busco puntos en común para llegar a un acuerdo",
-        keywords: ["acuerdo", "consenso", "punto medio", "mediar", "negociar"],
-        strengths: ["empatia", "trabajo_equipo", "escucha"],
-      },
-      {
-        id: "C",
-        label: "Me cuesta hablarlo y lo voy dejando",
-        keywords: ["evito", "postergar", "callo", "me cuesta", "incomodo", "incómodo"],
-        opportunities: ["asertividad", "gestion_conflicto"],
-      },
-    ],
-  },
-  {
-    question: "Cuando te dan feedback difícil, ¿cómo reaccionas normalmente?",
-    options: [
-      {
-        id: "A",
-        label: "Lo tomo, lo proceso y trato de aplicarlo",
-        keywords: ["acepto", "aplico", "uso", "implemento", "cambio", "aprendi", "aprendí"],
-        strengths: ["aprendizaje_continuo", "escucha"],
-      },
-      {
-        id: "B",
-        label: "Al inicio me pega, pero después ajusto",
-        keywords: ["me pego", "me pegó", "me costo", "me costó", "despues", "después", "ajusto"],
-        strengths: ["adaptabilidad"],
-        opportunities: ["escucha"],
-      },
-      {
-        id: "C",
-        label: "Me pongo a la defensiva",
-        keywords: ["defensiva", "justifico", "me cierro", "molesta", "molestia"],
-        opportunities: ["escucha", "aprendizaje_continuo"],
-      },
-    ],
-  },
-  {
-    question: "¿Sueles proponer mejoras aunque nadie te las pida?",
-    options: [
-      {
-        id: "A",
-        label: "Sí, y además se nota el impacto",
-        keywords: ["propuse", "impacto", "mejore", "mejoré", "resultado", "iniciativa", "propuesta"],
-        strengths: ["innovacion", "orientacion_resultados", "iniciativa"],
-      },
-      {
-        id: "B",
-        label: "Sí, pero más bien en cosas pequeñas",
-        keywords: ["pequeno", "pequeño", "paso a paso", "incremental", "pequenas", "pequeñas"],
-        strengths: ["iniciativa"],
-      },
-      {
-        id: "C",
-        label: "No mucho, me cuesta salir de lo que me asignan",
-        keywords: ["me cuesta", "asignado", "esperar", "instruccion", "instrucción", "zona de confort"],
-        opportunities: ["innovacion", "iniciativa"],
-      },
-    ],
-  },
-  {
-    question: "Pensando en tu chamba, ¿qué tipo de logro te hace sentir más orgullo?",
-    options: [
-      {
-        id: "A",
-        label: "Uno donde el equipo creció gracias a mi aporte",
-        keywords: ["equipo", "personas", "aporte", "crecio", "creció", "mentor"],
-        strengths: ["liderazgo", "trabajo_equipo", "empatia"],
-      },
-      {
-        id: "B",
-        label: "Uno técnico o estratégico con resultado claro",
-        keywords: ["tecnico", "técnico", "estrategico", "estratégico", "resultado", "objetivo"],
-        strengths: ["solucion_analitica", "orientacion_resultados"],
-      },
-      {
-        id: "C",
-        label: "Uno de constancia personal y superación",
-        keywords: ["constancia", "disciplina", "habito", "hábito", "superacion", "superación"],
-        strengths: ["resiliencia", "aprendizaje_continuo"],
-      },
-    ],
-  },
-  {
-    question: "Con toda honestidad, ¿qué sientes que hoy te está costando más mejorar?",
-    options: [
-      {
-        id: "A",
-        label: "Comunicar mejor y decir lo que pienso a tiempo",
-        keywords: ["comunicar", "asertivo", "asertiva", "expresar", "hablar", "hablar claro", "comunicacion"],
-        opportunities: ["comunicacion", "asertividad"],
-      },
-      {
-        id: "B",
-        label: "Ordenar prioridades y manejar mejor mi tiempo",
-        keywords: ["tiempo", "tiempos", "prioridad", "prioridades", "foco", "organizacion", "organización", "plan", "administrar", "agenda"],
-        opportunities: ["gestion_tiempo", "orientacion_resultados"],
-      },
-      {
-        id: "C",
-        label: "Delegar, pedir ayuda y confiar más en el equipo",
-        keywords: ["delegar", "pedir ayuda", "confianza", "soltar", "equipo"],
-        opportunities: ["liderazgo", "trabajo_equipo"],
-      },
-    ],
-  },
-  {
-    question: "Para crecer en los próximos meses, ¿qué crees que más te ayudaría?",
-    options: [
-      {
-        id: "A",
-        label: "Tener mentoría y feedback frecuente",
-        keywords: ["mentoria", "mentoría", "feedback", "acompanamiento", "acompañamiento"],
-        strengths: ["aprendizaje_continuo"],
-      },
-      {
-        id: "B",
-        label: "Tomar un proyecto retador con más responsabilidad",
-        keywords: ["proyecto", "desafiante", "responsabilidad", "reto", "liderar"],
-        strengths: ["iniciativa", "liderazgo"],
-      },
-      {
-        id: "C",
-        label: "Formación técnica con práctica guiada",
-        keywords: ["curso", "taller", "formacion", "formación", "tecnico", "técnico"],
-        strengths: ["aprendizaje_continuo", "solucion_analitica"],
-      },
-    ],
-  },
-];
-
-const STRENGTH_LABELS: Record<string, string> = {
-  empatia: "Empatía y lectura del contexto humano",
-  comunicacion: "Comunicación clara",
-  escucha: "Escucha activa",
-  asertividad: "Asertividad",
-  trabajo_equipo: "Trabajo en equipo",
-  liderazgo: "Liderazgo colaborativo",
-  orientacion_resultados: "Orientación a resultados",
-  resolucion_problemas: "Resolución de problemas",
-  solucion_analitica: "Pensamiento analítico",
-  adaptabilidad: "Adaptabilidad al cambio",
-  innovacion: "Innovación",
-  aprendizaje_continuo: "Aprendizaje continuo",
-  iniciativa: "Iniciativa",
-  resiliencia: "Resiliencia",
-};
-
-const OPPORTUNITY_LABELS: Record<string, string> = {
-  asertividad: "Asertividad en conversaciones difíciles",
-  gestion_conflicto: "Gestión de conflicto",
-  escucha: "Recepción de feedback",
-  aprendizaje_continuo: "Apertura al aprendizaje",
-  innovacion: "Proactividad e innovación",
-  iniciativa: "Toma de iniciativa",
-  comunicacion: "Comunicación estratégica",
-  gestion_tiempo: "Priorización y gestión del tiempo",
-  orientacion_resultados: "Foco en resultados sostenidos",
-  liderazgo: "Delegación y liderazgo",
-  trabajo_equipo: "Colaboración y confianza en el equipo",
-};
-
-const STRENGTH_DESCRIPTIONS: Record<string, string> = {
-  empatia: "Tienes una capacidad natural para leer el estado emocional de las personas y adaptar tu comunicación a lo que el momento requiere.",
-  comunicacion: "Transmites tus ideas con claridad, ajustando el tono y el nivel de detalle según tu audiencia.",
-  escucha: "Prestas atención genuina a lo que dicen los demás y esto genera confianza y apertura a tu alrededor.",
-  asertividad: "Expresas tu punto de vista con seguridad sin herir a los demás, lo cual facilita conversaciones difíciles.",
-  trabajo_equipo: "Colaboras de forma efectiva y contribuyes a crear un ambiente donde todos se sienten parte del resultado.",
-  liderazgo: "Movilizas a las personas desde el ejemplo y la confianza, no solo desde la autoridad.",
-  orientacion_resultados: "Mantienes el foco en los objetivos incluso bajo presión, y conviertes las intenciones en acciones concretas.",
-  resolucion_problemas: "Ante los obstáculos no te paralizas: buscas alternativas con pragmatismo y creatividad.",
-  solucion_analitica: "Descompones situaciones complejas en partes manejables y tomas decisiones con base en datos.",
-  adaptabilidad: "Te ajustas con agilidad a los cambios sin perder efectividad, lo cual es clave en entornos dinámicos.",
-  innovacion: "Propones ideas nuevas y cuestionas el statu quo de forma constructiva.",
-  aprendizaje_continuo: "Tienes una mentalidad de crecimiento: buscas activamente mejorar y aprender de cada experiencia.",
-  iniciativa: "No esperas que te digan qué hacer; identificas oportunidades y actúas antes de que alguien lo pida.",
-  resiliencia: "Cuando algo no sale como esperabas, te recuperas con rapidez y extraes aprendizaje del tropiezo.",
-};
-
-const OPPORTUNITY_DESCRIPTIONS: Record<string, string> = {
-  asertividad: "Te cuesta sostener tu postura en conversaciones difíciles o con personas de mayor jerarquía; desarrollar esta habilidad fortalecerá tu credibilidad.",
-  gestion_conflicto: "Cuando surge una tensión en el equipo tiendes a evitarla en lugar de abordarla; aprender a gestionarla directamente te ahorrará energía y fricciones futuras.",
-  escucha: "Recibir críticas o feedback puede ser difícil; trabajar la apertura a escuchar sin ponerse a la defensiva acelera el crecimiento personal.",
-  aprendizaje_continuo: "Hay cierta resistencia a salir de la zona de confort o explorar formas nuevas de hacer las cosas; potenciar esa apertura tiene un impacto directo en tu desarrollo.",
-  innovacion: "Te apoyás mucho en procesos establecidos; cultivar la curiosidad y el pensamiento lateral te permitirá aportar ideas que marquen la diferencia.",
-  iniciativa: "Esperas directrices claras antes de actuar; construir el hábito de proponer y avanzar sin que te lo pidan elevará tu visibilidad y tu impacto.",
-  comunicacion: "En situaciones de alta exposición o presión la comunicación pierde claridad o estructura; trabajar esto te dará más confianza e influencia.",
-  gestion_tiempo: "Tienes dificultades para priorizar cuando todo parece urgente; aprender a distinguir lo importante de lo urgente libera energía para lo que realmente mueve el negocio.",
-  orientacion_resultados: "El foco en el proceso a veces hace perder de vista el resultado final; fortalecer esta orientación te ayudará a cerrar ciclos con mayor consistencia.",
-  liderazgo: "Te cuesta delegar o confiar en que el equipo puede ejecutar sin supervisión constante; desarrollar esto multiplica tu capacidad de impacto.",
-  trabajo_equipo: "Hay una tendencia a trabajar en solitario o a desconfiar del ritmo ajeno; construir esa confianza colectiva hace que los proyectos fluyan mejor.",
-};
-
-interface ResourceData {
-  label: string;
-  tipo: string;
-  why: string;
-  url: string;
-  category: "curso" | "video" | "taller";
-}
-
-const RESOURCE_BY_OPPORTUNITY: Record<string, ResourceData> = {
-  asertividad: {
-    label: "Improving Communication Skills",
-    tipo: "Curso en Coursera · opción gratuita",
-    why: "Te ayuda a estructurar conversaciones difíciles con más claridad, seguridad y empatía en contextos reales de trabajo.",
-    url: "https://www.coursera.org/learn/wharton-communication-skills",
-    category: "curso",
-  },
-  gestion_conflicto: {
-    label: "Negotiation Skills",
-    tipo: "Curso en Coursera · opción gratuita",
-    why: "Fortalece tu capacidad de resolver desacuerdos con técnicas de negociación aplicables a equipo, cliente y stakeholders.",
-    url: "https://www.coursera.org/learn/negotiation-skills",
-    category: "curso",
-  },
-  escucha: {
-    label: "How to speak so that people want to listen",
-    tipo: "Video en YouTube (TED) · gratis",
-    why: "Te da ideas prácticas para mejorar cómo escuchas y te comunicas, con ejemplos muy claros para el día a día.",
-    url: "https://www.youtube.com/watch?v=eIho2S0ZahI",
-    category: "video",
-  },
-  aprendizaje_continuo: {
-    label: "Google Project Management Certificate",
-    tipo: "Curso de Google en Coursera · opción gratuita",
-    why: "Te ayuda a estructurar mejor tu aprendizaje, planificación y ejecución con una ruta guiada y práctica.",
-    url: "https://www.coursera.org/professional-certificates/google-project-management",
-    category: "curso",
-  },
-  innovacion: {
-    label: "Creative Thinking: Techniques and Tools for Success",
-    tipo: "Curso en Coursera · opción gratuita",
-    why: "Te ofrece métodos concretos para generar ideas y aterrizarlas en propuestas de valor para proyectos reales.",
-    url: "https://www.coursera.org/learn/creative-thinking-techniques-and-tools-for-success",
-    category: "curso",
-  },
-  iniciativa: {
-    label: "Fundamentals of Project Management",
-    tipo: "Alison · curso gratuito",
-    why: "Te ayuda a desarrollar hábitos de proactividad, responsabilidad personal y enfoque para avanzar con más autonomía en contextos profesionales.",
-    url: "https://alison.com/course/fundamentals-of-project-management-revised-2017",
-    category: "curso",
-  },
-  comunicacion: {
-    label: "Improving Communication Skills",
-    tipo: "Curso en Coursera · opción gratuita",
-    why: "Fortalece tu comunicación verbal y escrita para conversaciones de trabajo más claras, asertivas y efectivas.",
-    url: "https://www.coursera.org/learn/wharton-communication-skills",
-    category: "curso",
-  },
-  gestion_tiempo: {
-    label: "Work Smarter, Not Harder: Time Management",
-    tipo: "Curso en Coursera · opción gratuita",
-    why: "Te ayuda a priorizar mejor, reducir distractores y sostener foco en semanas con alta carga de trabajo.",
-    url: "https://www.coursera.org/learn/work-smarter-not-harder",
-    category: "curso",
-  },
-  orientacion_resultados: {
-    label: "Google Data Analytics Certificate",
-    tipo: "Curso de Google en Coursera · opción gratuita",
-    why: "Fortalece tu enfoque en resultados con análisis de datos aplicable al seguimiento de objetivos e impacto.",
-    url: "https://www.coursera.org/professional-certificates/google-data-analytics",
-    category: "curso",
-  },
-  liderazgo: {
-    label: "Introduction to Management Analysis and Strategies",
-    tipo: "Alison · curso gratuito",
-    why: "Fortalece tu liderazgo práctico para delegar, coordinar mejor y acompañar al equipo con mayor claridad.",
-    url: "https://alison.com/course/introduction-to-management-analysis-and-strategies",
-    category: "curso",
-  },
-  trabajo_equipo: {
-    label: "Teamwork Skills: Communicating Effectively in Groups",
-    tipo: "Curso en Coursera · opción gratuita",
-    why: "Refuerza colaboración, coordinación y comunicación en equipos multidisciplinarios para mejorar resultados compartidos.",
-    url: "https://www.coursera.org/learn/teamwork-skills-effective-communication",
-    category: "curso",
-  },
-};
-
-const randomFrom = (items: string[]): string => items[Math.floor(Math.random() * items.length)];
+const normalizeEmail = (value: string): string => value.trim().toLowerCase();
 
 const normalize = (value: string): string =>
   value
@@ -535,66 +622,132 @@ const normalize = (value: string): string =>
     .replace(/\s+/g, " ")
     .trim();
 
-const escapeRegExp = (value: string): string => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+const toProfileKey = (profile: string): ProfileKey => {
+  const normalized = normalize(profile);
 
-const keywordMatches = (text: string, keyword: string): boolean => {
-  const normalizedText = normalize(text);
-  const normalizedKeyword = normalize(keyword);
-
-  if (normalizedKeyword.includes(" ")) {
-    return normalizedText.includes(normalizedKeyword);
+  if (normalized.includes("product")) return "product";
+  if (normalized.includes("customer success") || normalized.includes("customer-success") || normalized === "cs") {
+    return "customer-success";
   }
-
-  const regex = new RegExp(`(^|\\s)${escapeRegExp(normalizedKeyword)}(\\s|$)`);
-  return regex.test(normalizedText);
-};
-
-const isGreetingInput = (value: string): boolean => {
-  const normalizedValue = normalize(value);
-  const compact = normalizedValue.replace(/[!?.,;:]/g, "").trim();
-  if (compact.length > 24) return false;
-
-  return /^(hola|holi|buenas|buen dia|hello|hey|hi|que tal|que onda)$/.test(compact)
-    || /^(hola|holi|buenas)\b/.test(compact);
-};
-
-const formatQuestionWithOptions = (name: string, stepIndex: number): string => {
-  const step = STEPS[stepIndex];
-  if (!step) return "";
-
-  const intro = stepIndex === 0 ? `Hola ${name || "colaborador"} 👋 ` : "";
-  return `${intro}${step.question}`;
-};
-
-const getTopKeys = (map: Record<string, number>, limit = 3): string[] =>
-  Object.entries(map)
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, limit)
-    .map(([key]) => key);
-
-const fillUniqueKeys = (primary: string[], fallback: string[], min: number): string[] => {
-  const result: string[] = [];
-
-  for (const key of primary) {
-    if (!result.includes(key)) {
-      result.push(key);
-    }
-    if (result.length >= min) return result.slice(0, min);
-  }
-
-  for (const key of fallback) {
-    if (!result.includes(key)) {
-      result.push(key);
-    }
-    if (result.length >= min) return result.slice(0, min);
-  }
-
-  return result.slice(0, min);
+  return "ux-ui";
 };
 
 const parseRecommendedResourceTitles = (report: string): string[] => {
   const matches = [...report.matchAll(/\*\*\d+\.\s([^\n*]+)\*\*/g)];
   return matches.map((match) => match[1].trim()).filter(Boolean);
+};
+
+const classifyAssessment = (q1: OptionId, q2?: OptionId): Classification => {
+  if (q1 === "C") return "solid";
+  if (q1 === "B") {
+    if (q2 === "A") return "opportunity";
+    if (q2 === "C") return "functional-strong";
+    return "functional-developing";
+  }
+  if (q2 === "A") return "priority";
+  if (q2 === "C") return "emergent";
+  return "opportunity";
+};
+
+const buildAssessmentPriority = (q1: OptionId, q2?: OptionId): boolean => q1 === "A" || q2 === "A";
+
+const getCompetencyOrder = (profileKey: ProfileKey): string[] => {
+  return [...BASE_COMPETENCIES, ...PROFILE_COMPETENCIES[profileKey]];
+};
+
+const createAssessmentFlow = (profileLabel: string): AssessmentFlow => {
+  const profileKey = toProfileKey(profileLabel);
+  return {
+    profileKey,
+    profileLabel,
+    competencyOrder: getCompetencyOrder(profileKey),
+    competencyIndex: 0,
+    pendingQuestion: "q1",
+    assessments: {},
+  };
+};
+
+const isValidAssessmentFlow = (value: unknown): value is AssessmentFlow => {
+  if (!value || typeof value !== "object") return false;
+  const flow = value as Partial<AssessmentFlow>;
+  return Array.isArray(flow.competencyOrder)
+    && typeof flow.competencyIndex === "number"
+    && (flow.pendingQuestion === "q1" || flow.pendingQuestion === "q2")
+    && typeof flow.profileLabel === "string"
+    && typeof flow.assessments === "object";
+};
+
+const getCurrentCompetency = (flow: AssessmentFlow | null): CompetencyDefinition | null => {
+  if (!flow) return null;
+  const key = flow.competencyOrder[flow.competencyIndex];
+  return key ? COMPETENCIES[key] || null : null;
+};
+
+const getCurrentQuestion = (flow: AssessmentFlow | null): QuestionDefinition | null => {
+  const competency = getCurrentCompetency(flow);
+  if (!competency || !flow) return null;
+  return flow.pendingQuestion === "q2" ? competency.questions.q2 : competency.questions.q1;
+};
+
+const detectSelectedOption = (input: string): OptionId | null => {
+  const normalized = normalize(input);
+  const compact = normalized.replace(/[\s.,;:!?()\-_/]/g, "");
+
+  if (compact === "a") return "A";
+  if (compact === "b") return "B";
+  if (compact === "c") return "C";
+  if (normalized.includes("opcion a") || normalized.includes("opcion: a") || normalized.includes("opcion-a")) return "A";
+  if (normalized.includes("opcion b") || normalized.includes("opcion: b") || normalized.includes("opcion-b")) return "B";
+  if (normalized.includes("opcion c") || normalized.includes("opcion: c") || normalized.includes("opcion-c")) return "C";
+
+  return null;
+};
+
+const formatQuestionWithOptions = (name: string, flow: AssessmentFlow | null, includeIntro = false): string => {
+  const competency = getCurrentCompetency(flow);
+  const question = getCurrentQuestion(flow);
+  if (!competency || !question || !flow) return "";
+
+  const intro = includeIntro
+    ? `Hola ${name || "colaborador"}. Tendremos una conversación guiada, breve y concreta. Te iré mostrando opciones A, B o C para identificar fortalezas y áreas de desarrollo sin usar niveles visibles.\n\n`
+    : "";
+
+  const questionLabel = flow.pendingQuestion === "q1" ? "Pregunta 1 de 2" : "Pregunta 2 de 2";
+  return `${intro}**${competency.label}**\n${questionLabel}\n${question.prompt}\n\n**A.** ${question.options.A}\n**B.** ${question.options.B}\n**C.** ${question.options.C}\n\nRespóndeme solo con **A**, **B** o **C**.`;
+};
+
+const buildAssistantPromptForInvalidAnswer = (flow: AssessmentFlow | null): string => {
+  const question = getCurrentQuestion(flow);
+  if (!question) return "Para continuar necesito una respuesta cerrada. Elige A, B o C.";
+
+  return `Para seguir con esta conversación guiada, elige solo una opción: **A**, **B** o **C**.\n\n**A.** ${question.options.A}\n**B.** ${question.options.B}\n**C.** ${question.options.C}`;
+};
+
+const classificationWeight: Record<Classification, number> = {
+  priority: 0,
+  opportunity: 1,
+  emergent: 2,
+  "functional-developing": 3,
+  "functional-strong": 4,
+  solid: 5,
+};
+
+const buildStrengthNarrative = (classification: Classification, competency: CompetencyDefinition): string => {
+  if (classification === "solid") return competency.strengthDescription;
+  return `Ya muestras una base consistente en esta competencia. ${competency.strengthDescription}`;
+};
+
+const buildOpportunityNarrative = (classification: Classification, competency: CompetencyDefinition): string => {
+  if (classification === "priority") {
+    return `${competency.opportunityDescription} Conviene darle atención prioritaria porque hoy puede limitar tu impacto o tu claridad al colaborar.`;
+  }
+  if (classification === "emergent") {
+    return `Ya hay señales positivas en esta competencia, pero todavía necesita práctica deliberada para volverse consistente. ${competency.opportunityDescription}`;
+  }
+  if (classification === "functional-developing") {
+    return `Hay una base funcional, aunque todavía no siempre se sostiene con la misma claridad o consistencia. ${competency.opportunityDescription}`;
+  }
+  return competency.opportunityDescription;
 };
 
 const buildRecoveredReportFromProgress = (args: {
@@ -604,103 +757,206 @@ const buildRecoveredReportFromProgress = (args: {
   completionPercentage: number;
   deliverables: Array<{ title: string; summary: string; submittedAt: string }>;
 }): string => {
-  const allResourceCatalog = Object.values(RESOURCE_BY_OPPORTUNITY);
-  const byLabel = new Map(
-    allResourceCatalog.map((resource) => [normalize(resource.label), resource]),
-  );
-
-  const fallbackExternal = allResourceCatalog
-    .filter((resource) => !/Disponible internamente en UIX/i.test(resource.url))
-    .slice(0, 5);
-
-  const selectedFromProgress = (args.assignedResources || [])
-    .map((title) => {
-      const matched = byLabel.get(normalize(title));
-      if (matched) return matched;
-
-      return {
-        label: title,
-        tipo: "Recurso abierto recomendado",
-        why: "Te ayudará a reforzar tus áreas de oportunidad con acciones prácticas aplicables a tu rol.",
-        url: `https://www.google.com/search?q=${encodeURIComponent(title)}`,
-        category: "curso" as const,
-      };
-    })
-    .filter(Boolean)
-    .slice(0, 5);
-
-  const recoveredResources = selectedFromProgress.length ? selectedFromProgress : fallbackExternal;
-
-  const resources = recoveredResources.map((resource, index) => (
-    `**${index + 1}. ${resource.label}**\n` +
-    `- **Tipo:** ${resource.tipo}\n` +
-    `- **Por qué te va a servir:** ${resource.why}\n` +
-    `- **Recurso:** ${resource.url}`
-  )).join("\n\n");
+  const normalizedActions = (args.assignedResources || []).slice(0, 5);
+  const actions = normalizedActions.length
+    ? normalizedActions.map((title, index) => `**${index + 1}. ${title}**\n- Mantén una práctica breve y constante alrededor de este hábito durante las próximas semanas.`).join("\n\n")
+    : [
+        "**1. Recuperar tu foco semanal**\n- Define una prioridad central por semana y revísala al cierre.",
+        "**2. Registrar aprendizajes aplicados**\n- Anota qué cambió en tu trabajo después de cada avance.",
+        "**3. Compartir acuerdos con claridad**\n- Resume por escrito decisiones y siguientes pasos después de reuniones clave.",
+      ].join("\n\n");
 
   const latestDeliverable = args.deliverables.length ? args.deliverables[args.deliverables.length - 1] : null;
-  const deliverableSection = latestDeliverable
-    ? `### Último entregable registrado\n- **Título:** ${latestDeliverable.title || "Sin título"}\n- **Fecha:** ${latestDeliverable.submittedAt ? new Date(latestDeliverable.submittedAt).toLocaleDateString("es-MX") : "Sin fecha"}\n- **Resumen:** ${latestDeliverable.summary || "Sin resumen"}`
-    : "### Último entregable registrado\n- Aún no hay entregables registrados.";
+  const latestDeliverableText = latestDeliverable
+    ? `Último entregable registrado: ${latestDeliverable.title || "Sin título"}. ${latestDeliverable.summary || "Sin resumen."}`
+    : "Aún no hay entregables registrados.";
 
-  return `---REPORTE_INICIO---\n## Tu plan de crecimiento personalizado (recuperado)\n\n### Estado recuperado\n- **Correo de seguimiento:** ${args.email}\n- **Colaborador:** ${args.name || "Colaborador"}\n- **Avance registrado:** ${args.completionPercentage}%\n\n### Tus fortalezas\n- **Compromiso con tu desarrollo:** Mantienes seguimiento activo de tu ruta de aprendizaje.\n- **Persistencia:** Ya tienes evidencia de avance y continuidad en tu proceso.\n- **Orientación a resultados:** Tu progreso y entregables muestran intención de aplicar lo aprendido.\n\n### Lo que más puedes potenciar\n- **Comunicación estratégica:** Compartir más claramente aprendizajes y resultados con tu equipo.\n- **Priorización y foco:** Planear bloques semanales para cerrar recursos pendientes.\n- **Aplicación práctica:** Convertir aprendizajes en acciones concretas y medibles en tus proyectos.\n\n### Recursos recomendados\n${resources || "Sin recursos recuperados."}\n\n${deliverableSection}\n---REPORTE_FIN---`;
+  return `---REPORTE_INICIO---
+## Tu resumen de desarrollo (recuperado)
+
+### Fortalezas
+- **Seguimiento de tu desarrollo**: Ya existe evidencia de continuidad en tu proceso y eso habla de compromiso con tu crecimiento.
+- **Persistencia**: Has mantenido avances registrados, lo cual es una buena base para seguir construyendo hábitos de desarrollo.
+
+### Áreas de oportunidad
+- **Consistencia en la práctica**: Conviene sostener pequeños hábitos de desarrollo para que tu avance sea más visible y continuo.
+- **Aplicación en el trabajo diario**: Llevar cada aprendizaje a acciones concretas en tu rol hará que el progreso se note más rápido.
+
+### Acciones prácticas recomendadas
+${actions}
+
+### Estado recuperado
+- **Correo de seguimiento:** ${args.email}
+- **Colaborador:** ${args.name || "Colaborador"}
+- **Avance registrado:** ${args.completionPercentage}%
+- **Seguimiento previo:** ${latestDeliverableText}
+---REPORTE_FIN---`;
 };
 
-const toResourceId = (resource: ResourceData): string => `${resource.label}|${resource.url}`;
+const buildPersonalizedReport = (args: {
+  flow: AssessmentFlow;
+  employeeEmail: string;
+}): string => {
+  const entries = args.flow.competencyOrder
+    .map((key) => args.flow.assessments[key])
+    .filter((entry): entry is AssessmentEntry => Boolean(entry?.classification));
 
-const buildMixedResourceRecommendations = (opportunityKeys: string[], total = 5): ResourceData[] => {
-  const selected: ResourceData[] = [];
-  const usedIds = new Set<string>();
-  const allResources = Object.values(RESOURCE_BY_OPPORTUNITY);
+  const strengths = entries
+    .filter((entry) => entry.classification === "solid" || entry.classification === "functional-strong")
+    .sort((left, right) => classificationWeight[right.classification!] - classificationWeight[left.classification!])
+    .slice(0, 4);
 
-  const addResource = (resource?: ResourceData): boolean => {
-    if (!resource) return false;
-    const resourceId = toResourceId(resource);
-    if (usedIds.has(resourceId)) return false;
+  const opportunities = entries
+    .filter((entry) => entry.classification !== "solid" && entry.classification !== "functional-strong")
+    .sort((left, right) => classificationWeight[left.classification!] - classificationWeight[right.classification!])
+    .slice(0, 4);
 
-    const workshopCount = selected.filter((item) => item.category === "taller").length;
-    if (resource.category === "taller" && workshopCount >= 2) return false;
+  const fallbackStrengths = entries
+    .filter((entry) => !strengths.some((current) => current.competencyKey === entry.competencyKey))
+    .sort((left, right) => classificationWeight[right.classification!] - classificationWeight[left.classification!])
+    .slice(0, Math.max(0, 3 - strengths.length));
 
-    selected.push(resource);
-    usedIds.add(resourceId);
-    return true;
+  const resolvedStrengths = [...strengths, ...fallbackStrengths].slice(0, 4);
+  const resolvedOpportunities = opportunities.length
+    ? opportunities
+    : entries
+        .filter((entry) => !resolvedStrengths.some((current) => current.competencyKey === entry.competencyKey))
+        .sort((left, right) => classificationWeight[left.classification!] - classificationWeight[right.classification!])
+        .slice(0, 3);
+
+  const strengthLines = resolvedStrengths.map((entry) => {
+    const competency = COMPETENCIES[entry.competencyKey];
+    return `- **${competency.label}**: ${buildStrengthNarrative(entry.classification!, competency)}`;
+  }).join("\n");
+
+  const opportunityLines = resolvedOpportunities.map((entry) => {
+    const competency = COMPETENCIES[entry.competencyKey];
+    return `- **${competency.label}**: ${buildOpportunityNarrative(entry.classification!, competency)}`;
+  }).join("\n");
+
+  const selectedActions: ActionRecommendation[] = [];
+  const usedTitles = new Set<string>();
+  const addAction = (action?: ActionRecommendation) => {
+    if (!action || usedTitles.has(action.title)) return;
+    usedTitles.add(action.title);
+    selectedActions.push(action);
   };
 
-  for (const key of opportunityKeys) {
-    addResource(RESOURCE_BY_OPPORTUNITY[key]);
+  for (const entry of resolvedOpportunities) {
+    const competency = COMPETENCIES[entry.competencyKey];
+    competency.actions.forEach((action) => addAction(action));
+    if (selectedActions.length >= 5) break;
   }
 
-  const workshopHeavyOpportunities = ["comunicacion", "gestion_tiempo", "trabajo_equipo", "liderazgo"];
-  const shouldIncludeWorkshop = opportunityKeys.some((key) => workshopHeavyOpportunities.includes(key));
-
-  if (shouldIncludeWorkshop && !selected.some((item) => item.category === "taller")) {
-    const workshopFromOpportunity = opportunityKeys
-      .map((key) => RESOURCE_BY_OPPORTUNITY[key])
-      .find((item) => item?.category === "taller");
-    const fallbackWorkshop = allResources.find((item) => item.category === "taller");
-    addResource(workshopFromOpportunity || fallbackWorkshop);
+  if (selectedActions.length < 5) {
+    for (const entry of resolvedStrengths) {
+      const competency = COMPETENCIES[entry.competencyKey];
+      competency.actions.forEach((action) => addAction(action));
+      if (selectedActions.length >= 5) break;
+    }
   }
 
-  const requiredCategories: Array<ResourceData["category"]> = ["video", "curso"];
-  for (const category of requiredCategories) {
-    if (selected.length >= total) break;
-    if (selected.some((item) => item.category === category)) continue;
-    const candidate = allResources.find((item) => item.category === category && !usedIds.has(toResourceId(item)));
-    addResource(candidate);
+  const actionLines = selectedActions.slice(0, 5).map((action, index) => {
+    return `**${index + 1}. ${action.title}**\n- ${action.description}`;
+  }).join("\n\n");
+
+  const followUpEmailLine = args.employeeEmail
+    ? `- **Correo de seguimiento:** ${args.employeeEmail}`
+    : "- **Correo de seguimiento:** Pendiente de registro";
+
+  return `---REPORTE_INICIO---
+## Tu resumen de desarrollo profesional
+
+### Fortalezas
+${strengthLines || "- **Base de desarrollo**: Ya cuentas con señales positivas para seguir fortaleciendo tu práctica profesional."}
+
+### Áreas de oportunidad
+${opportunityLines || "- **Profundizar en tu práctica**: Tu siguiente paso está en volver más consistentes las fortalezas que ya muestras."}
+
+### Acciones prácticas recomendadas
+${actionLines || "**1. Sostener una práctica breve**\n- Define un hábito concreto por semana y dale seguimiento diario."}
+
+### Seguimiento
+${followUpEmailLine}
+---REPORTE_FIN---`;
+};
+
+const advanceAssessmentFlow = (flow: AssessmentFlow, answer: OptionId) => {
+  const competencyKey = flow.competencyOrder[flow.competencyIndex];
+  const currentEntry: AssessmentEntry = flow.assessments[competencyKey] || { competencyKey };
+
+  if (flow.pendingQuestion === "q1") {
+    const updatedEntry: AssessmentEntry = { ...currentEntry, q1: answer };
+
+    if (answer === "C") {
+      updatedEntry.classification = "solid";
+      updatedEntry.isPriority = false;
+      const nextIndex = flow.competencyIndex + 1;
+      const isComplete = nextIndex >= flow.competencyOrder.length;
+      return {
+        flow: {
+          ...flow,
+          competencyIndex: isComplete ? flow.competencyIndex : nextIndex,
+          pendingQuestion: "q1" as const,
+          assessments: { ...flow.assessments, [competencyKey]: updatedEntry },
+        },
+        competencyCompleted: COMPETENCIES[competencyKey],
+        isComplete,
+      };
+    }
+
+    return {
+      flow: {
+        ...flow,
+        pendingQuestion: "q2" as const,
+        assessments: { ...flow.assessments, [competencyKey]: updatedEntry },
+      },
+      competencyCompleted: null,
+      isComplete: false,
+    };
   }
 
-  for (const item of allResources) {
-    if (selected.length >= total) break;
-    addResource(item);
+  const q1 = currentEntry.q1 || "B";
+  const classification = classifyAssessment(q1, answer);
+  const updatedEntry: AssessmentEntry = {
+    ...currentEntry,
+    q1,
+    q2: answer,
+    classification,
+    isPriority: buildAssessmentPriority(q1, answer),
+  };
+  const nextIndex = flow.competencyIndex + 1;
+  const isComplete = nextIndex >= flow.competencyOrder.length;
+
+  return {
+    flow: {
+      ...flow,
+      competencyIndex: isComplete ? flow.competencyIndex : nextIndex,
+      pendingQuestion: "q1" as const,
+      assessments: { ...flow.assessments, [competencyKey]: updatedEntry },
+    },
+    competencyCompleted: COMPETENCIES[competencyKey],
+    isComplete,
+  };
+};
+
+const buildTransitionMessage = (competency: CompetencyDefinition | null, answeredQ2: boolean): string => {
+  if (!competency) {
+    return answeredQ2
+      ? "Gracias. Con esto cierro esta competencia y sigo con la siguiente."
+      : "Gracias. Con esto tengo suficiente para esta competencia y sigo con la siguiente.";
   }
 
-  return selected.slice(0, total);
+  return answeredQ2
+    ? `Gracias. Con esto cierro **${competency.label}** y avanzamos.`
+    : `Gracias. Con esto cierro **${competency.label}** y pasamos a la siguiente competencia.`;
 };
 
 export function useChat() {
   const hasHydratedRef = useRef(false);
-  const lastSyncedAssessmentRef = useRef<string>("");
+  const lastSyncedAssessmentRef = useRef("");
   const remoteSaveTimeoutRef = useRef<number | null>(null);
+
   const [conversationId, setConversationId] = useState<number | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isTyping, setIsTyping] = useState(false);
@@ -708,17 +964,31 @@ export function useChat() {
   const [employeeName, setEmployeeName] = useState("");
   const [employeeEmail, setEmployeeEmail] = useState("");
   const [trainerName, setTrainerName] = useState("");
-
   const [currentStep, setCurrentStep] = useState(0);
   const [finalReport, setFinalReport] = useState("");
   const [followUpCount, setFollowUpCount] = useState(0);
   const [isInFollowUp, setIsInFollowUp] = useState(false);
-  const responseStyleRef = useRef<{ lastOpening: string; lastInsight: string }>({
-    lastOpening: "",
-    lastInsight: "",
-  });
+  const [selectedProfile, setSelectedProfile] = useState("");
+  const [assessmentFlow, setAssessmentFlow] = useState<AssessmentFlow | null>(null);
 
   const signalsRef = useRef<SignalState>({ strengths: {}, opportunities: {} });
+
+  const clearRuntimeState = useCallback(() => {
+    setConversationId(null);
+    setMessages([]);
+    setIsEvaluationComplete(false);
+    setIsTyping(false);
+    setFollowUpCount(0);
+    setIsInFollowUp(false);
+    setCurrentStep(0);
+    setFinalReport("");
+    setEmployeeName("");
+    setEmployeeEmail("");
+    setTrainerName("");
+    setSelectedProfile("");
+    setAssessmentFlow(null);
+    signalsRef.current = { strengths: {}, opportunities: {} };
+  }, []);
 
   const applyPersistedState = useCallback((parsed: PersistedChatState) => {
     const parsedMessages = normalizeIncomingMessages(parsed.messages);
@@ -745,6 +1015,8 @@ export function useChat() {
     setFinalReport(normalizedReport);
     setFollowUpCount(hasMeaningfulContent && typeof parsed.followUpCount === "number" ? parsed.followUpCount : 0);
     setIsInFollowUp(hasMeaningfulContent && Boolean(parsed.isInFollowUp));
+    setSelectedProfile(parsed.selectedProfile || "");
+    setAssessmentFlow(isValidAssessmentFlow(parsed.assessmentFlow) ? parsed.assessmentFlow : null);
 
     if (parsed.signals?.strengths && parsed.signals?.opportunities) {
       signalsRef.current = {
@@ -770,29 +1042,25 @@ export function useChat() {
       isInFollowUp,
       signals: signalsRef.current,
       updatedAt: Date.now(),
+      selectedProfile,
+      assessmentFlow,
     };
-  }, [conversationId, messages, isEvaluationComplete, employeeName, employeeEmail, trainerName, currentStep, finalReport, followUpCount, isInFollowUp]);
+  }, [assessmentFlow, conversationId, currentStep, employeeEmail, employeeName, finalReport, followUpCount, isEvaluationComplete, isInFollowUp, messages, selectedProfile, trainerName]);
 
   const hasSnapshotContent = useCallback((snapshot: PersistedChatState | null | undefined): boolean => {
     if (!snapshot) return false;
-
     const parsedMessages = normalizeIncomingMessages(snapshot.messages);
     const normalizedReport = snapshot.finalReport || "";
-
-    return (
-      parsedMessages.length > 0
-      || Boolean(normalizedReport)
-    );
+    return parsedMessages.length > 0 || Boolean(normalizedReport);
   }, []);
 
   const isResumeUsableSnapshot = useCallback((snapshot: PersistedChatState | null | undefined): boolean => {
     if (!snapshot) return false;
-
     const parsedMessages = normalizeIncomingMessages(snapshot.messages);
     const hasAnyMessageContent = parsedMessages.some((msg) => String(msg?.content || "").trim().length > 0);
     const hasReport = Boolean(String(snapshot.finalReport || "").trim());
-
-    return hasAnyMessageContent || hasReport;
+    const hasCompatibleFlow = Boolean(snapshot.assessmentFlow && isValidAssessmentFlow(snapshot.assessmentFlow));
+    return hasReport || (hasAnyMessageContent && hasCompatibleFlow);
   }, []);
 
   const getSnapshotResumeRank = useCallback((snapshot: PersistedChatState | null | undefined) => {
@@ -811,27 +1079,15 @@ export function useChat() {
     };
   }, []);
 
-  const pickPreferredSnapshot = useCallback(
-    (first: PersistedChatState | null, second: PersistedChatState | null): PersistedChatState | null => {
-      const a = getSnapshotResumeRank(first);
-      const b = getSnapshotResumeRank(second);
+  const pickPreferredSnapshot = useCallback((first: PersistedChatState | null, second: PersistedChatState | null): PersistedChatState | null => {
+    const a = getSnapshotResumeRank(first);
+    const b = getSnapshotResumeRank(second);
 
-      if (a.userMessagesCount !== b.userMessagesCount) {
-        return a.userMessagesCount > b.userMessagesCount ? first : second;
-      }
-
-      if (a.hasReport !== b.hasReport) {
-        return a.hasReport > b.hasReport ? first : second;
-      }
-
-      if (a.updatedAt !== b.updatedAt) {
-        return a.updatedAt >= b.updatedAt ? first : second;
-      }
-
-      return first || second;
-    },
-    [getSnapshotResumeRank],
-  );
+    if (a.userMessagesCount !== b.userMessagesCount) return a.userMessagesCount > b.userMessagesCount ? first : second;
+    if (a.hasReport !== b.hasReport) return a.hasReport > b.hasReport ? first : second;
+    if (a.updatedAt !== b.updatedAt) return a.updatedAt >= b.updatedAt ? first : second;
+    return first || second;
+  }, [getSnapshotResumeRank]);
 
   const readLocalSnapshotForEmail = useCallback((email: string): PersistedChatState | null => {
     try {
@@ -840,11 +1096,9 @@ export function useChat() {
 
       const parsed = JSON.parse(raw) as PartialPersistedChatState;
       const storedEmail = String(parsed.employeeEmail || "").trim().toLowerCase();
-      if (storedEmail !== email.trim().toLowerCase()) {
-        return null;
-      }
+      if (storedEmail !== email.trim().toLowerCase()) return null;
 
-      const normalized: PersistedChatState = {
+      return {
         conversationId: typeof parsed.conversationId === "number" ? parsed.conversationId : null,
         messages: normalizeIncomingMessages(parsed.messages),
         isEvaluationComplete: Boolean(parsed.isEvaluationComplete),
@@ -855,13 +1109,11 @@ export function useChat() {
         finalReport: String(parsed.finalReport || parsed.report || ""),
         followUpCount: typeof parsed.followUpCount === "number" ? parsed.followUpCount : 0,
         isInFollowUp: Boolean(parsed.isInFollowUp),
-        signals: parsed.signals?.strengths && parsed.signals?.opportunities
-          ? parsed.signals
-          : { strengths: {}, opportunities: {} },
+        signals: parsed.signals?.strengths && parsed.signals?.opportunities ? parsed.signals : { strengths: {}, opportunities: {} },
         updatedAt: typeof parsed.updatedAt === "number" ? parsed.updatedAt : Date.now(),
+        selectedProfile: String(parsed.selectedProfile || ""),
+        assessmentFlow: isValidAssessmentFlow(parsed.assessmentFlow) ? parsed.assessmentFlow : null,
       };
-
-      return normalized;
     } catch {
       return null;
     }
@@ -889,10 +1141,10 @@ export function useChat() {
         finalReport: String(parsed.finalReport || parsed.report || ""),
         followUpCount: typeof parsed.followUpCount === "number" ? parsed.followUpCount : 0,
         isInFollowUp: Boolean(parsed.isInFollowUp),
-        signals: parsed.signals?.strengths && parsed.signals?.opportunities
-          ? parsed.signals
-          : { strengths: {}, opportunities: {} },
+        signals: parsed.signals?.strengths && parsed.signals?.opportunities ? parsed.signals : { strengths: {}, opportunities: {} },
         updatedAt: typeof parsed.updatedAt === "number" ? parsed.updatedAt : Date.now(),
+        selectedProfile: String(parsed.selectedProfile || ""),
+        assessmentFlow: isValidAssessmentFlow(parsed.assessmentFlow) ? parsed.assessmentFlow : null,
       };
 
       return isResumeUsableSnapshot(normalized) ? normalized : null;
@@ -904,11 +1156,7 @@ export function useChat() {
   const forceResumeLatestLocalSession = useCallback((): boolean => {
     const snapshot = readLatestLocalSnapshot();
     if (!snapshot) return false;
-
-    applyPersistedState({
-      ...snapshot,
-      updatedAt: Date.now(),
-    });
+    applyPersistedState({ ...snapshot, updatedAt: Date.now() });
     return true;
   }, [applyPersistedState, readLatestLocalSnapshot]);
 
@@ -923,7 +1171,7 @@ export function useChat() {
       const parsed = JSON.parse(raw) as PersistedChatState;
       applyPersistedState(parsed);
     } catch {
-      // Ignore malformed local data and continue with a fresh session.
+      // Ignore malformed local data.
     } finally {
       hasHydratedRef.current = true;
     }
@@ -931,21 +1179,18 @@ export function useChat() {
 
   useEffect(() => {
     if (!hasHydratedRef.current || isTyping) return;
-
     const snapshot = getPersistedSnapshot();
     if (!hasSnapshotContent(snapshot)) return;
 
     try {
       localStorage.setItem(CHAT_STORAGE_KEY, JSON.stringify(snapshot));
     } catch {
-      // Ignore storage write errors (quota/private mode).
+      // Ignore storage write errors.
     }
   }, [getPersistedSnapshot, hasSnapshotContent, isTyping]);
 
-
   useEffect(() => {
     if (!hasHydratedRef.current || !employeeEmail.trim()) return;
-
     const hasContent = messages.length > 0 || Boolean(finalReport);
     if (!hasContent) return;
 
@@ -956,7 +1201,7 @@ export function useChat() {
     remoteSaveTimeoutRef.current = window.setTimeout(() => {
       const snapshot = getPersistedSnapshot();
       saveSessionByEmail(employeeEmail, snapshot).catch(() => {
-        window.alert('No se pudo guardar tu avance en la nube. Tu progreso solo estará disponible en este navegador hasta que se recupere la conexión.');
+        window.alert("No se pudo guardar tu avance en la nube. Tu progreso solo estará disponible en este navegador hasta que se recupere la conexión.");
       });
     }, 400);
 
@@ -966,23 +1211,22 @@ export function useChat() {
         remoteSaveTimeoutRef.current = null;
       }
     };
-  }, [conversationId, currentStep, employeeEmail, finalReport, getPersistedSnapshot, isTyping, messages.length]);
+  }, [employeeEmail, finalReport, getPersistedSnapshot, messages.length]);
 
   useEffect(() => {
     if (!hasHydratedRef.current || !employeeEmail.trim()) return;
-
     const snapshot = getPersistedSnapshot();
     if (!hasSnapshotContent(snapshot)) return;
 
     void saveSessionByEmail(employeeEmail, snapshot).catch(() => {
-      // Ignore remote persistence errors to keep UX responsive.
+      // Ignore remote persistence errors.
     });
   }, [employeeEmail, getPersistedSnapshot, hasSnapshotContent]);
 
   useEffect(() => {
     if (!isEvaluationComplete || !employeeEmail.trim() || !finalReport.trim()) return;
 
-    const syncKey = `${employeeEmail.trim().toLowerCase()}|${conversationId || "no-conversation"}`;
+    const syncKey = `${employeeEmail.trim().toLowerCase()}|${conversationId || "no-conversation"}|${selectedProfile}`;
     if (lastSyncedAssessmentRef.current === syncKey) return;
     lastSyncedAssessmentRef.current = syncKey;
 
@@ -991,477 +1235,61 @@ export function useChat() {
       collaboratorEmail: employeeEmail,
       collaboratorName: employeeName,
       trainerName,
-      profile: "",
+      profile: selectedProfile,
       assessmentId: conversationId ? String(conversationId) : undefined,
       assignedResources,
     }).catch(() => {
-      // Ignore sync errors here; user can retry from results screen.
+      // Ignore sync errors here.
     });
-  }, [conversationId, employeeEmail, employeeName, trainerName, finalReport, isEvaluationComplete]);
-
-  const addSignal = (type: keyof SignalState, key: string, points = 1) => {
-    const bucket = signalsRef.current[type];
-    bucket[key] = (bucket[key] || 0) + points;
-  };
-
-  const detectSelectedOption = useCallback((input: string, stepIndex: number): OptionDefinition | null => {
-    const step = STEPS[stepIndex];
-    if (!step) return null;
-
-    const normalized = normalize(input);
-    const compact = normalized.replace(/[\s.,;:!?()\-_/]/g, "");
-    // Only accept direct option shortcuts when the whole answer is just A/B/C.
-    if (compact === "a" || compact === "b" || compact === "c") {
-      const byLetter = step.options.find((opt) => opt.id.toLowerCase() === compact);
-      if (byLetter) return byLetter;
-    }
-
-    const explicitOption = step.options.find((opt) => normalized.includes(`opcion ${opt.id.toLowerCase()}`) || normalized.includes(`opción ${opt.id.toLowerCase()}`));
-    if (explicitOption) return explicitOption;
-
-    let best: OptionDefinition | null = null;
-    let bestScore = 0;
-    let isTie = false;
-
-    for (const option of step.options) {
-      const score = option.keywords.reduce((sum, keyword) => {
-        if (!keywordMatches(normalized, keyword)) return sum;
-        return sum + (keyword.includes(" ") ? 2 : 1);
-      }, 0);
-
-      if (score > bestScore) {
-        best = option;
-        bestScore = score;
-        isTie = false;
-      } else if (score > 0 && score === bestScore) {
-        isTie = true;
-      }
-    }
-
-    if (isTie) return null;
-
-    return bestScore > 0 ? best : null;
-  }, []);
-
-  const applyHeuristicSignals = (input: string) => {
-    const text = normalize(input);
-
-    if (text.includes("equipo") || text.includes("companero") || text.includes("companera")) {
-      addSignal("strengths", "trabajo_equipo", 1);
-      addSignal("strengths", "empatia", 1);
-    }
-
-    if (text.includes("prioriz") || text.includes("plan") || text.includes("objetivo")) {
-      addSignal("strengths", "orientacion_resultados", 1);
-    }
-
-    if (text.includes("aprendi") || text.includes("aprendizaje") || text.includes("mejore")) {
-      addSignal("strengths", "aprendizaje_continuo", 1);
-    }
-
-    if (text.includes("me cuesta") || text.includes("me cuesta reconocer") || text.includes("no se")) {
-      addSignal("opportunities", "comunicacion", 1);
-    }
-  };
-
-  const buildPersonalizedReport = useCallback((): string => {
-    const topStrengths = getTopKeys(signalsRef.current.strengths, 4);
-    const topOpportunities = getTopKeys(signalsRef.current.opportunities, 3);
-
-    const fallbackStrengths = ["aprendizaje_continuo", "trabajo_equipo", "orientacion_resultados"];
-    const fallbackOpportunities = ["comunicacion", "gestion_tiempo", "asertividad"];
-
-    const resolvedStrengths = fillUniqueKeys(topStrengths, fallbackStrengths, 4);
-    const resolvedOpportunities = fillUniqueKeys(topOpportunities, fallbackOpportunities, 3);
-
-    const strengths = resolvedStrengths
-      .map((key) => `- **${STRENGTH_LABELS[key] || key}**: ${STRENGTH_DESCRIPTIONS[key] || ""}`)
-      .join("\n");
-
-    const opportunities = resolvedOpportunities
-      .map((key) => `- **${OPPORTUNITY_LABELS[key] || key}**: ${OPPORTUNITY_DESCRIPTIONS[key] || ""}`)
-      .join("\n");
-
-    const resources = buildMixedResourceRecommendations(resolvedOpportunities, 5)
-      .map((res, index) => {
-        return `**${index + 1}. ${res.label}**\n- **Tipo:** ${res.tipo}\n- **Por qué te va a servir:** ${res.why}\n- **Recurso:** ${res.url}`;
-      })
-      .join("\n\n");
-
-    const followUpEmailLine = employeeEmail
-      ? `- **Correo de seguimiento:** ${employeeEmail}`
-      : "- **Correo de seguimiento:** Pendiente de registro";
-
-    return `---REPORTE_INICIO---
-## Tu plan de crecimiento personalizado
-
-### Tus fortalezas
-${strengths}
-
-### Lo que más puedes potenciar
-${opportunities}
-
-### Recursos recomendados
-${resources}
-
-### Cómo funciona tu seguimiento
-- **Marca los recursos completados:** Cuando avances en tus cursos, videos o talleres, selecciónalos en la sección de seguimiento.
-- **Sube tu entregable:** Registra un resumen corto de lo que aplicaste, qué cambió en tu trabajo y agrega evidencias si las tienes.
-- **Elige un formato guiado:** Puedes registrar un mini caso aplicado, un resumen de aprendizaje o la explicación de una herramienta con campos estructurados.
-- **Tu avance se actualiza:** Cada entregable ayuda a reflejar tu progreso y permite dar seguimiento a tu crecimiento.
-- **El Área de Capital Humano puede ver este avance:** Tus recursos completados y entregables registrados estarán disponibles para acompañar tu desarrollo.
-
-### Plan de seguimiento (30-60-90 días)
-- **Día 30:** Completar al menos 2 recursos y registrar aprendizajes clave.
-- **Día 60:** Completar los recursos restantes y aplicar 1 práctica en un proyecto real.
-- **Día 90:** Compartir resultados, evidencias y próximos pasos de desarrollo.
-${followUpEmailLine}
-
-### Entregable de crecimiento
-- **Formato sugerido:** 1 página o 5 diapositivas.
-- **Debe incluir:**
-  1. Recursos completados (curso/video/taller) y fecha.
-  2. Qué cambió en tu forma de trabajar.
-  3. Evidencia concreta (ejemplo de proyecto, feedback, métricas o resultados).
-  4. Próximo objetivo de mejora para los siguientes 30 días.
----REPORTE_FIN---`;
-  }, [employeeEmail]);
-
-  const generateContextualResponse = useCallback((userInput: string, stepIndex: number): ContextualResponse => {
-    const cleaned = userInput.trim();
-    const normalized = normalize(cleaned);
-    const step = STEPS[stepIndex];
-
-    if (isGreetingInput(cleaned)) {
-      return {
-        text: "Hola. Si quieres retomar una conversación previa, vuelve al inicio y usa 'Retomar con correo' con el mismo email. Si prefieres, también podemos comenzar una nueva evaluación desde cero.",
-        followUpTriggered: true,
-      };
-    }
-
-    if (!step) {
-      return { text: "Te leo 👀", followUpTriggered: false };
-    }
-
-    // Detect meta-comments: user is asking about the bot or the format, not answering the question
-    const metaPatterns = [
-      /no (veo|hay|tengo|encuentro|aparecen?|salen?|muestran?).*opcion/,
-      /cuales? son las opciones/,
-      /que opciones/,
-      /no entend[ií]/,
-      /no comprend[ií]/,
-      /puedes? repetir/,
-      /no me qued[oó] claro/,
-      /no s[eé] qu[eé] contestar/,
-      /^\?+$/,
-    ];
-    const isMetaComment = metaPatterns.some((p) => p.test(normalized));
-    if (isMetaComment) {
-      setIsInFollowUp(true);
-      setFollowUpCount((prev) => prev + 1);
-      const optionLabels = step.options.map((o) => `- "${o.label}"`).join("\n");
-      return {
-        text: `Claro, te doy un poco más de contexto. Aquí algunos ejemplos de cómo puede verse:\n\n${optionLabels}\n\nNo tienes que elegir uno al pie de la letra, cuéntamelo con tus palabras.`,
-        followUpTriggered: true,
-      };
-    }
-
-    const selectedOption = detectSelectedOption(cleaned, stepIndex);
-    const hasStepKeywordMatch = step.options.some((option) =>
-      option.keywords.some((keyword) => keywordMatches(cleaned, keyword))
-    );
-
-    if (!selectedOption && cleaned.length < 3) {
-      setIsInFollowUp(true);
-      setFollowUpCount((prev) => prev + 1);
-      return {
-        text: "Te sigo. Si quieres, cuéntamelo con un ejemplo corto y lo vamos aterrizando juntos.",
-        followUpTriggered: true,
-      };
-    }
-
-    const isSingleWord = cleaned.trim().split(/\s+/).length === 1;
-    if (!selectedOption && !hasStepKeywordMatch && isSingleWord && cleaned.length <= 12) {
-      setIsInFollowUp(true);
-      setFollowUpCount((prev) => prev + 1);
-      const optionLabels = step.options.map((o) => `- \"${o.label}\"`).join("\n");
-      return {
-        text: `Te leo, pero para esta pregunta necesito un poco más de contexto sobre tu respuesta. Puedes apoyarte en alguno de estos ejemplos:\n\n${optionLabels}\n\nRespóndeme con tus palabras y continuamos.`,
-        followUpTriggered: true,
-      };
-    }
-
-    const noRecuerdo = ["no recuerdo", "no se", "no sé", "ni idea"].some((token) => normalized.includes(token));
-    if (noRecuerdo && followUpCount < 2) {
-      setIsInFollowUp(true);
-      setFollowUpCount((prev) => prev + 1);
-      return {
-        text: "Todo bien, no hace falta que sea perfecto. Pensemos en una situación reciente y la vamos armando paso a paso.",
-        followUpTriggered: true,
-      };
-    }
-
-    if (selectedOption?.strengths) {
-      selectedOption.strengths.forEach((key) => addSignal("strengths", key, 2));
-    }
-    if (selectedOption?.opportunities) {
-      selectedOption.opportunities.forEach((key) => addSignal("opportunities", key, 2));
-    }
-
-    applyHeuristicSignals(cleaned);
-
-    const pickDifferent = (items: string[], previous: string): string => {
-      const pool = items.filter((item) => item !== previous);
-      if (pool.length > 0) return randomFrom(pool);
-      return randomFrom(items);
-    };
-
-    // ── Step-aware insight: knows exactly what each question is about ──────────
-    const detectStepSpecificInsight = (text: string, stepIdx: number, matchedOption: OptionDefinition | null): string | null => {
-      // Step 0: situación intensa — qué fue lo más retador
-      if (stepIdx === 0) {
-        if (/(presion|presión|urgente|deadline|entregable|prioriz|tiempo)/.test(text))
-          return "Gestionar presión y prioridades al mismo tiempo es de las situaciones más exigentes.";
-        if (/(equipo|companero|compañero|conflicto|persona|jefe|relacion)/.test(text))
-          return "Los retos que involucran personas siempre tienen más capas de las que parecen.";
-        if (/(tecnico|técnico|aprender|nuevo|sistema|herramienta)/.test(text))
-          return "Los retos técnicos o de aprendizaje son los que más te desarrollan, aunque en el momento sean agotadores.";
-      }
-
-      // Step 1: qué rol tomaste
-      if (stepIdx === 1) {
-        if (/(lider|lidere|lideré|coordin|dirigi|dirigí|responsable|frente)/.test(text))
-          return "Tomar el frente en momentos complejos requiere claridad y temple. Lo registro.";
-        if (/(ejecut|impleme|resolv|entregue|entregué|foco|concentr)/.test(text))
-          return "Concentrarte en ejecutar y resolver lo esencial, sin perderte en el ruido, es más difícil de lo que parece.";
-        if (/(apoy|facilit|acompañ|ayud|consenso|acuerdo)/.test(text))
-          return "Apoyar y facilitar que los demás avancen es un rol que suele pasar desapercibido pero tiene un impacto real.";
-      }
-
-      // Step 2: qué hiciste primero cuando se complicó
-      if (stepIdx === 2) {
-        if (/(prioriz|plan|orden|pasos|estrategia)/.test(text))
-          return "Poner orden antes de actuar cuando todo se está moviendo es una señal de madurez profesional.";
-        if (/(pedi|pedí|apoyo|ayuda|alinear|consenso)/.test(text))
-          return "Pedir apoyo y alinear en vez de querer resolverlo solo también es inteligencia. No todo el mundo lo hace.";
-        if (/(probe|probé|altern|ajust|iterar|experiment)/.test(text))
-          return "Quedarte buscando alternativas hasta encontrar salida requiere paciencia. Lo registro como fortaleza.";
-      }
-
-      // Step 3: cuando alguien te cuestiona
-      if (stepIdx === 3) {
-        if (/(abiert|abrirme|dialog|convers|acuerdo|negoci)/.test(text))
-          return "Abrirte al diálogo en vez de cerrarte cuando hay tensión es una habilidad que no abunda.";
-        if (/(directo|directa|hablé|hable|respeto|claro)/.test(text))
-          return "Hablar directo con respeto es exactamente asertividad. No es fácil, pero marca la diferencia.";
-        if (/(evito|postergo|callo|me cuesta|incómodo|incomodo|difícil|dificil)/.test(text))
-          return "Reconocer que esas conversaciones se sienten incómodas es el primer paso para trabajarlo.";
-      }
-
-      // Step 4: feedback difícil
-      if (stepIdx === 4) {
-        if (/(acepto|aplico|uso|cambio|aprend|implement)/.test(text))
-          return "Convertir el feedback en acción concreta, sin quedarse solo en la reflexión, es más raro de lo que parece.";
-        if (/(al inicio|me pego|me pegó|me costo|me costó|después|despues|ajust)/.test(text))
-          return "Que al inicio cueste y luego lo integres de todas formas es completamente válido. Lo que importa es el ajuste.";
-        if (/(defensiv|justific|me cierro|molest|reacciono|reaccion)/.test(text))
-          return "Reconocerlo con esa honestidad ya es el primer paso. Eso tiene solución una vez que lo identificas.";
-      }
-
-      // Step 5: ¿sueles proponer mejoras?
-      if (stepIdx === 5) {
-        if (/(en ocasion|a veces|de vez en cuando|depende|algunas veces|no siempre|aveces)/.test(text))
-          return "Que sea selectivo tampoco está mal — lo interesante es crecer esa iniciativa a más áreas.";
-        if (/(siempre|constantemente|seguido|frecuente|regular|habitual)/.test(text))
-          return "Que sea algo constante en ti habla de una proactividad real, no solo esporádica.";
-        if (/(no mucho|poco|rara vez|casi no|no tanto|me cuesta|espero)/.test(text))
-          return "Reconocerlo con esa claridad ya dice algo. Hay espacio interesante para desarrollar la proactividad.";
-      }
-
-      // Step 6: logros — qué te hace más orgullo
-      if (stepIdx === 6) {
-        if (/(sin ayuda|solo\b|sola\b|por mi cuenta|independiente|formador|tutor|sin nadie)/.test(text))
-          return "Hacer eso sin red de seguridad requiere confianza en ti mismo. Ese tipo de logro habla de autonomía real.";
-        if (/(cliente|usuario|stakeholder|directivo|presentar|exponer)/.test(text))
-          return "Exponerse ante un cliente o decisor tiene su propio nivel de presión. Que saliera bien dice bastante.";
-        if (/(equipo|personas|juntos|grupo|mentor|crecer)/.test(text))
-          return "Un logro donde el equipo creció contigo tiene más capas: requiere que el trabajo de todos haga clic.";
-        if (/(resultado|objetivo|meta|numero|número|dato|metrica|métrica)/.test(text))
-          return "Tener un logro concreto y medible que puedas nombrar es señal de orientación a resultados.";
-        if (/(aprendi|aprendí|supere|superé|mejoré|mejore|constancia|persevera)/.test(text))
-          return "Los logros de constancia personal son los más privados y a veces los más significativos.";
-      }
-
-      // Step 7: qué te está costando más mejorar
-      if (stepIdx === 7) {
-        const timePattern = /(tiempo|tiempos|prioridad|prioridades|organizacion|organización|foco|agenda|administ|planific)/;
-        const communicationPattern = /(comunicar|comunicacion|hablar|expresar|asertiv)/;
-        const delegationPattern = /(delegar|confia|soltar|control|pedir ayuda|equipo)/;
-
-        // Prioriza intención explícita en texto para evitar respuestas cruzadas.
-        if (timePattern.test(text))
-          return "El manejo del tiempo y las prioridades es de las áreas más comunes y también más trabajables cuando hay consciencia.";
-        if (communicationPattern.test(text))
-          return "Nombrar la comunicación como área de mejora requiere honestidad. Pocas personas llegan a verlo tan claro.";
-        if (delegationPattern.test(text))
-          return "Soltar el control y confiar en el equipo es de los aprendizajes más difíciles para quien está acostumbrado a cargar con todo.";
-
-        // Fallback por opción detectada cuando el texto es ambiguo.
-        if (matchedOption?.id === "B") {
-          return "El manejo del tiempo y las prioridades es de las áreas más comunes y también más trabajables cuando hay consciencia.";
-        }
-        if (matchedOption?.id === "A") {
-          return "Nombrar la comunicación como área de mejora requiere honestidad. Pocas personas llegan a verlo tan claro.";
-        }
-        if (matchedOption?.id === "C") {
-          return "Soltar el control y confiar en el equipo es de los aprendizajes más difíciles para quien está acostumbrado a cargar con todo.";
-        }
-      }
-
-      // Step 8: qué más te ayudaría para crecer
-      if (stepIdx === 8) {
-        if (/(mentor|feedback|retroaliment|acompañ|guia|guía|retroalimentacion)/.test(text))
-          return "Saber exactamente qué tipo de apoyo necesitas ya es en sí una señal de madurez. No todos lo identifican.";
-        if (/(proyecto|reto|responsabilidad|desafio|desafío|haciendo|práctica|practica)/.test(text))
-          return "El aprendizaje en acción con más responsabilidad encima es lo que más acelera el crecimiento en muchos perfiles.";
-        if (/(curso|taller|formacion|formación|tecnico|técnico|estudiar|aprender|capacit)/.test(text))
-          return "La formación estructurada con práctica real es de las rutas más efectivas para desarrollar competencias de fondo.";
-      }
-
-      return null;
-    };
-
-    // detectChallenge solo aplica en pasos 0-4 (situaciones pasadas), no en logros/crecimiento
-    const detectChallenge = (text: string): string | null => {
-      if (stepIndex > 4) return null;
-      if (/(tiempo|deadline|urgente|carga|prioridad|entregable)/.test(text)) return "un reto de tiempo y prioridades";
-      if (/(equipo|conflicto|jefe|companero|compañero)/.test(text)) return "un reto de dinámica con el equipo";
-      if (/(tecnico|técnico|sistema|codigo|código|herramienta)/.test(text)) return "un reto técnico";
-      return null;
-    };
-
-    const detectAction = (text: string): string | null => {
-      if (/(prioriz|plan|organi|orden|administ|gestio|entregable)/.test(text)) return "ordenando y priorizando";
-      if (/(abiert|abrirme|dialog|acuerdo|consenso|negoci)/.test(text)) return "abriendo el diálogo y buscando acuerdos";
-      if (/(aline|coordina|coordine|coordiné|sincroniz)/.test(text)) return "coordinando y alineando al equipo";
-      if (/(probe|probé|iter|ajust|aprend|investig)/.test(text)) return "probando alternativas y ajustando";
-      if (/(deleg|pedi ayuda|pedí ayuda|apoy)/.test(text)) return "apoyándote en el equipo";
-      return null;
-    };
-
-    const stepInsight = detectStepSpecificInsight(normalized, stepIndex, selectedOption);
-    const challenge = detectChallenge(normalized);
-    const action = detectAction(normalized);
-
-    // Build the body: prefer step-specific insight, fall back to action/challenge combo
-    let body: string;
-    if (stepInsight) {
-      body = stepInsight;
-    } else if (challenge && action) {
-      body = randomFrom([
-        `Aunque había ${challenge}, lo fuiste resolviendo ${action}.`,
-        `Frente a ${challenge}, tu reacción fue ${action}, y eso se nota.`,
-      ]);
-    } else if (challenge) {
-      body = randomFrom([
-        `El punto más exigente ahí fue ${challenge}.`,
-        `Se nota que lo complejo de fondo era ${challenge}.`,
-      ]);
-    } else if (action) {
-      body = randomFrom([
-        `Tu forma de manejarlo, ${action}, habla bien de tu criterio.`,
-        `En lo práctico, lo resolviste ${action}.`,
-      ]);
-    } else {
-      // True fallback — step-labeled so it at least acknowledges the topic
-      const stepTopics: Record<number, string[]> = {
-        0: ["Con eso me queda más claro el tipo de presión que enfrentaste.", "Eso me ayuda a entender qué tan exigente fue el contexto."],
-        1: ["Con eso entiendo mejor cómo te posicionas cuando la cosa se complica.", "Interesante, ya veo el rol que tomaste."],
-        2: ["Con eso ya tengo una idea de cómo priorizas cuando hay caos.", "Queda claro tu estilo de respuesta ante la presión."],
-        3: ["Con eso entiendo cómo manejas la tensión con otras personas.", "Ya veo qué tan cómodo te sientes con esas conversaciones."],
-        4: ["Con eso entiendo tu relación con el feedback.", "Ya veo cómo procesas las críticas."],
-        5: ["Con eso me queda claro tu nivel de proactividad.", "Ya veo cómo te mueves cuando no hay una instrucción explícita."],
-        6: ["Con eso ya entiendo qué tipo de logros te generan más satisfacción.", "Interesante, eso me dice mucho de lo que valoras en tu trabajo."],
-        7: ["Con eso tengo una idea muy clara hacia dónde puede ir tu crecimiento.", "Gracias por la honestidad, eso me ayuda mucho para armar el plan."],
-        8: ["Con eso ya sé qué tipo de recursos van a servirte más.", "Perfecto, eso me ayuda a orientar las recomendaciones."],
-      };
-      const pool = stepTopics[stepIndex] ?? ["Con esto me ubico mejor para lo que sigue.", "Buena info, te sigo."];
-      body = randomFrom(pool);
-    }
-
-    // Openings pool — vary by emotional tone detected
-    const emotionDetected = /(estres|agobi|presion|presión|frustr|cansad|agotad)/.test(normalized);
-    const positiveDetected = /(orgull|content|motivad|satisf|bien|genial|excelente|emocionad)/.test(normalized);
-    const openings = emotionDetected
-      ? ["Entiendo, gracias por abrirlo.", "Se nota que fue intenso.", "Lo escucho."]
-      : positiveDetected
-      ? ["Qué bueno escuchar eso.", "Se nota el orgullo.", "Genial."]
-      : ["Va, gracias.", "Anotado.", "Claro.", "Perfecto.", "Buenísimo."];
-
-    const opening = pickDifferent(openings, responseStyleRef.current.lastOpening);
-    responseStyleRef.current.lastOpening = opening;
-    responseStyleRef.current.lastInsight = body;
-
-    // Cap at 2 parts max: opening + body
-    const text = `${opening} ${body}`;
-    return { text, followUpTriggered: false };
-  }, [detectSelectedOption, followUpCount]);
+  }, [conversationId, employeeEmail, employeeName, finalReport, isEvaluationComplete, selectedProfile, trainerName]);
 
   useEffect(() => {
-    if (conversationId && employeeName && messages.length === 0) {
-      const initialAssistantMsg: ChatMessage = {
-        id: `assistant-${Date.now()}`,
-        role: "assistant",
-        content: formatQuestionWithOptions(employeeName, 0),
-      };
+    if (!conversationId || !employeeName || messages.length > 0 || !assessmentFlow) return;
 
-      setMessages([initialAssistantMsg]);
-      setCurrentStep(1);
-    }
-  }, [conversationId, employeeName, messages.length]);
+    const initialAssistantMsg: ChatMessage = {
+      id: `assistant-${Date.now()}`,
+      role: "assistant",
+      content: formatQuestionWithOptions(employeeName, assessmentFlow, true),
+    };
 
-  const sendMessage = useCallback(async (content: string, _currentConvId: number) => {
-    if (!content.trim()) return;
+    setMessages([initialAssistantMsg]);
+    setCurrentStep(1);
+  }, [assessmentFlow, conversationId, employeeName, messages.length]);
+
+  const sendMessage = useCallback(async (content: string, currentConversationId: number) => {
+    if (!content.trim() || !assessmentFlow) return;
 
     const userMsgId = Date.now().toString();
     const assistantMsgId = (Date.now() + 1).toString();
+    const selectedOption = detectSelectedOption(content);
 
-    const questionIndex = currentStep - 1;
-    const { text: contextualResponse, followUpTriggered } = generateContextualResponse(content, questionIndex);
-
-    let fullResponseContent = contextualResponse;
+    let fullResponseContent = "";
     let shouldCompleteAfterStream = false;
+    let nextReport = "";
 
-    if (!followUpTriggered) {
+    if (!selectedOption) {
+      setIsInFollowUp(true);
+      setFollowUpCount((prev) => prev + 1);
+      fullResponseContent = buildAssistantPromptForInvalidAnswer(assessmentFlow);
+    } else {
       setIsInFollowUp(false);
       setFollowUpCount(0);
 
-      const isLastQuestion = questionIndex === STEPS.length - 1;
+      const answeredQ2 = assessmentFlow.pendingQuestion === "q2";
+      const advanced = advanceAssessmentFlow(assessmentFlow, selectedOption);
+      setAssessmentFlow(advanced.flow);
 
-      if (isLastQuestion) {
-        const reportText = buildPersonalizedReport();
-        setFinalReport(reportText);
+      if (advanced.isComplete) {
+        nextReport = buildPersonalizedReport({ flow: advanced.flow, employeeEmail });
+        setFinalReport(nextReport);
+        setCurrentStep(advanced.flow.competencyOrder.length * 2);
         shouldCompleteAfterStream = true;
-
-        if (employeeEmail.trim()) {
-          const assignedResources = parseRecommendedResourceTitles(reportText);
-          void syncCollaboratorAssessment({
-            collaboratorEmail: employeeEmail,
-            collaboratorName: employeeName,
-            trainerName,
-            profile: "",
-            assessmentId: _currentConvId ? String(_currentConvId) : undefined,
-            assignedResources,
-          }).catch(() => {
-            // Ignore sync errors in chat flow; Results screen can retry sync.
-          });
-        }
-
-        fullResponseContent = `${contextualResponse}\n\n✨ Gracias por compartir. Ya armé tu plan personalizado. Haz clic en el botón de arriba para descargarlo.`;
+        fullResponseContent = `${buildTransitionMessage(advanced.competencyCompleted, answeredQ2)}\n\nGracias por completar esta conversación guiada. Ya preparé tu resumen de desarrollo. Usa **Ver avance** para revisarlo.`;
       } else {
-        const nextStep = questionIndex + 1;
+        const transition = buildTransitionMessage(advanced.competencyCompleted, answeredQ2);
+        const nextQuestion = formatQuestionWithOptions(employeeName, advanced.flow, false);
         setCurrentStep((prev) => prev + 1);
-        fullResponseContent = `${contextualResponse}\n\n${formatQuestionWithOptions(employeeName, nextStep)}`;
+        fullResponseContent = `${transition}\n\n${nextQuestion}`;
       }
     }
 
@@ -1478,57 +1306,40 @@ ${followUpEmailLine}
       const streamInterval = setInterval(() => {
         if (charIndex < fullResponseContent.length) {
           const partialContent = fullResponseContent.slice(0, charIndex + 1);
-          setMessages((prev) =>
-            prev.map((msg) =>
-              msg.id === assistantMsgId
-                ? { ...msg, content: partialContent }
-                : msg
-            )
-          );
+          setMessages((prev) => prev.map((msg) => msg.id === assistantMsgId ? { ...msg, content: partialContent } : msg));
           charIndex += 1;
-        } else {
-          clearInterval(streamInterval);
-          setIsTyping(false);
-          if (shouldCompleteAfterStream) {
-            setIsEvaluationComplete(true);
-            // Refuerzo: sincroniza progreso en backend al terminar evaluación
-            if (employeeEmail.trim()) {
-              const assignedResources = parseRecommendedResourceTitles(reportText);
-              void syncCollaboratorAssessment({
-                collaboratorEmail: employeeEmail,
-                collaboratorName: employeeName,
-                trainerName,
-                profile: "",
-                assessmentId: _currentConvId ? String(_currentConvId) : undefined,
-                assignedResources,
-              }).catch(() => {
-                // Ignora errores para no interrumpir el flujo
-              });
-            }
+          return;
+        }
+
+        clearInterval(streamInterval);
+        setIsTyping(false);
+
+        if (shouldCompleteAfterStream) {
+          setIsEvaluationComplete(true);
+          if (employeeEmail.trim()) {
+            const assignedResources = parseRecommendedResourceTitles(nextReport);
+            void syncCollaboratorAssessment({
+              collaboratorEmail: employeeEmail,
+              collaboratorName: employeeName,
+              trainerName,
+              profile: selectedProfile,
+              assessmentId: currentConversationId ? String(currentConversationId) : undefined,
+              assignedResources,
+            }).catch(() => {
+              // Ignore sync errors.
+            });
           }
         }
       }, 18);
-    }, 700);
-  }, [buildPersonalizedReport, currentStep, employeeName, trainerName, generateContextualResponse]);
+    }, 400);
+  }, [assessmentFlow, employeeEmail, employeeName, selectedProfile, trainerName]);
 
-  const clearRuntimeState = useCallback(() => {
-    setConversationId(null);
-    setMessages([]);
-    setIsEvaluationComplete(false);
-    setIsTyping(false);
-    setFollowUpCount(0);
-    setIsInFollowUp(false);
-    setCurrentStep(0);
-    setFinalReport("");
-    setEmployeeName("");
-    setEmployeeEmail("");
-    setTrainerName("");
-    signalsRef.current = { strengths: {}, opportunities: {} };
-  }, []);
-
-  const startNewEvaluation = useCallback(() => {
-    // Keep persisted history intact so an accidental click can still be recovered.
+  const startNewEvaluation = useCallback((profile = "") => {
     clearRuntimeState();
+    if (profile.trim()) {
+      setSelectedProfile(profile);
+      setAssessmentFlow(createAssessmentFlow(profile));
+    }
   }, [clearRuntimeState]);
 
   const resetChat = useCallback(() => {
@@ -1536,7 +1347,7 @@ ${followUpEmailLine}
     try {
       localStorage.removeItem(CHAT_STORAGE_KEY);
     } catch {
-      // Ignore storage cleanup errors.
+      // Ignore cleanup errors.
     }
   }, [clearRuntimeState]);
 
@@ -1548,7 +1359,7 @@ ${followUpEmailLine}
     if (hasRemoteSession) return true;
 
     try {
-      const normalizedEmail = email.trim().toLowerCase();
+      const normalizedEmail = normalizeEmail(email);
       if (!normalizedEmail) return false;
 
       const progress = await getCollaboratorProgress(normalizedEmail);
@@ -1565,7 +1376,7 @@ ${followUpEmailLine}
   }, [hasLocalSessionForEmail]);
 
   const loadSessionForEmail = useCallback(async (email: string): Promise<boolean> => {
-    const normalizedEmail = email.trim().toLowerCase();
+    const normalizedEmail = normalizeEmail(email);
 
     const [remoteSession, localSession, progressResult] = await Promise.all([
       fetchSessionByEmail(normalizedEmail),
@@ -1576,8 +1387,7 @@ ${followUpEmailLine}
     const validRemote = remoteSession && hasSnapshotContent(remoteSession) ? remoteSession : null;
     const validLocal = localSession && hasSnapshotContent(localSession) ? localSession : null;
     const hasRecoverableProgress = Boolean(
-      progressResult
-      && (
+      progressResult && (
         (progressResult.assignedResources?.length || 0) > 0
         || (progressResult.deliverables?.length || 0) > 0
         || (progressResult.completionPercentage || 0) > 0
@@ -1615,12 +1425,14 @@ ${followUpEmailLine}
         employeeName: progress.collaboratorName || employeeName || "",
         employeeEmail: normalizedEmail,
         trainerName: progress.trainerName || "",
-        currentStep: STEPS.length,
+        currentStep: 0,
         finalReport: report,
         followUpCount: 0,
         isInFollowUp: false,
         signals: { strengths: {}, opportunities: {} },
         updatedAt: Date.now(),
+        selectedProfile: progress.profile || selectedProfile,
+        assessmentFlow: null,
       });
       return true;
     }
@@ -1636,20 +1448,20 @@ ${followUpEmailLine}
     }
 
     return false;
-  }, [applyPersistedState, employeeName, hasSnapshotContent, isResumeUsableSnapshot, pickPreferredSnapshot, readLocalSnapshotForEmail]);
+  }, [applyPersistedState, employeeName, hasSnapshotContent, isResumeUsableSnapshot, pickPreferredSnapshot, readLocalSnapshotForEmail, selectedProfile]);
 
   const recoverSessionFromProgress = useCallback(async (email: string, fallbackName?: string): Promise<boolean> => {
-    const normalizedEmail = email.trim().toLowerCase();
+    const normalizedEmail = normalizeEmail(email);
     if (!normalizedEmail) return false;
 
     try {
       const progress = await getCollaboratorProgress(normalizedEmail);
       const hasAnyProgress =
-        (progress.assignedResources?.length || 0) > 0 ||
-        (progress.deliverables?.length || 0) > 0 ||
-        (progress.completionPercentage || 0) > 0 ||
-        Boolean(progress.collaboratorName?.trim()) ||
-        Boolean(progress.latestAssessmentId?.trim());
+        (progress.assignedResources?.length || 0) > 0
+        || (progress.deliverables?.length || 0) > 0
+        || (progress.completionPercentage || 0) > 0
+        || Boolean(progress.collaboratorName?.trim())
+        || Boolean(progress.latestAssessmentId?.trim());
       if (!hasAnyProgress) return false;
 
       const report = buildRecoveredReportFromProgress({
@@ -1675,12 +1487,14 @@ ${followUpEmailLine}
         employeeName: progress.collaboratorName || fallbackName || "",
         employeeEmail: normalizedEmail,
         trainerName: progress.trainerName || "",
-        currentStep: STEPS.length,
+        currentStep: 0,
         finalReport: report,
         followUpCount: 0,
         isInFollowUp: false,
         signals: { strengths: {}, opportunities: {} },
         updatedAt: Date.now(),
+        selectedProfile: progress.profile || "",
+        assessmentFlow: null,
       });
 
       return true;
