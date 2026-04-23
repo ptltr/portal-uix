@@ -709,18 +709,17 @@ const formatQuestionWithOptions = (name: string, flow: AssessmentFlow | null, in
   if (!competency || !question || !flow) return "";
 
   const intro = includeIntro
-    ? `Hola ${name || "colaborador"}. Tendremos una conversación guiada, breve y concreta. Te iré mostrando opciones A, B o C para identificar fortalezas y áreas de desarrollo sin usar niveles visibles.\n\n`
+    ? `Hola ${name || "colaborador"}. Tendremos una conversación guiada, breve y concreta.\n\n`
     : "";
 
-  const questionLabel = flow.pendingQuestion === "q1" ? "Pregunta 1 de 2" : "Pregunta 2 de 2";
-  return `${intro}**${competency.label}**\n${questionLabel}\n${question.prompt}\n\n**A.** ${question.options.A}\n**B.** ${question.options.B}\n**C.** ${question.options.C}\n\nRespóndeme solo con **A**, **B** o **C**.`;
+  return `${intro}${question.prompt}\n\n- **A)** ${question.options.A}\n- **B)** ${question.options.B}\n- **C)** ${question.options.C}\n\nRespóndeme solo con **A**, **B** o **C**.`;
 };
 
 const buildAssistantPromptForInvalidAnswer = (flow: AssessmentFlow | null): string => {
   const question = getCurrentQuestion(flow);
   if (!question) return "Para continuar necesito una respuesta cerrada. Elige A, B o C.";
 
-  return `Para seguir con esta conversación guiada, elige solo una opción: **A**, **B** o **C**.\n\n**A.** ${question.options.A}\n**B.** ${question.options.B}\n**C.** ${question.options.C}`;
+  return `Para seguir con esta conversación guiada, elige solo una opción: **A**, **B** o **C**.\n\n- **A)** ${question.options.A}\n- **B)** ${question.options.B}\n- **C)** ${question.options.C}`;
 };
 
 const classificationWeight: Record<Classification, number> = {
@@ -940,17 +939,7 @@ const advanceAssessmentFlow = (flow: AssessmentFlow, answer: OptionId) => {
   };
 };
 
-const buildTransitionMessage = (competency: CompetencyDefinition | null, answeredQ2: boolean): string => {
-  if (!competency) {
-    return answeredQ2
-      ? "Gracias. Con esto cierro esta competencia y sigo con la siguiente."
-      : "Gracias. Con esto tengo suficiente para esta competencia y sigo con la siguiente.";
-  }
-
-  return answeredQ2
-    ? `Gracias. Con esto cierro **${competency.label}** y avanzamos.`
-    : `Gracias. Con esto cierro **${competency.label}** y pasamos a la siguiente competencia.`;
-};
+const buildTransitionMessage = (): string => "Gracias por tu respuesta.";
 
 export function useChat() {
   const hasHydratedRef = useRef(false);
@@ -1283,7 +1272,6 @@ export function useChat() {
       setIsInFollowUp(false);
       setFollowUpCount(0);
 
-      const answeredQ2 = assessmentFlow.pendingQuestion === "q2";
       const advanced = advanceAssessmentFlow(assessmentFlow, selectedOption);
       setAssessmentFlow(advanced.flow);
 
@@ -1292,9 +1280,9 @@ export function useChat() {
         setFinalReport(nextReport);
         setCurrentStep(advanced.flow.competencyOrder.length * 2);
         shouldCompleteAfterStream = true;
-        fullResponseContent = `${buildTransitionMessage(advanced.competencyCompleted, answeredQ2)}\n\nGracias por completar esta conversación guiada. Ya preparé tu resumen de desarrollo. Usa **Ver avance** para revisarlo.`;
+        fullResponseContent = `${buildTransitionMessage()}\n\nGracias por completar esta conversación guiada. Ya preparé tu resumen de desarrollo. Usa **Ver avance** para revisarlo.`;
       } else {
-        const transition = buildTransitionMessage(advanced.competencyCompleted, answeredQ2);
+        const transition = buildTransitionMessage();
         const nextQuestion = formatQuestionWithOptions(employeeName, advanced.flow, false);
         setCurrentStep((prev) => prev + 1);
         fullResponseContent = `${transition}\n\n${nextQuestion}`;
