@@ -30,6 +30,7 @@ const CHAT_STORAGE_KEY = 'uix-chat-session-v1';
 const normalizeEmail = (value: string): string => value.trim().toLowerCase();
 
 const UXUI_SUB_PROFILES = [
+  { id: 'research', label: 'Research', icon: '🧠', desc: 'Investigación con usuarios y generación de insights' },
   { id: 'writer', label: 'Writer', icon: '✍️', desc: 'Redacción UX, microcopy y contenido de producto' },
   { id: 'ux', label: 'UX Designer', icon: '🔍', desc: 'Investigación de usuarios y arquitectura de información' },
   { id: 'ui', label: 'UI Designer', icon: '🎨', desc: 'Interfaces visuales y sistemas de diseño' },
