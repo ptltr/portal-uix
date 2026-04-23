@@ -622,6 +622,18 @@ const normalize = (value: string): string =>
     .replace(/\s+/g, " ")
     .trim();
 
+const FOLLOW_UP_LEADS = [
+  "Con base en lo que respondiste, quiero profundizar un poco:",
+  "Gracias, para entenderlo mejor te hago una pregunta breve adicional:",
+  "Perfecto, avancemos con una pregunta de seguimiento:",
+  "Bien, para aterrizar mejor tu respuesta, va una más:",
+  "Buen punto. Sigamos con una pregunta complementaria:",
+];
+
+const pickFollowUpLead = (): string => {
+  return FOLLOW_UP_LEADS[Math.floor(Math.random() * FOLLOW_UP_LEADS.length)];
+};
+
 const toProfileKey = (profile: string): ProfileKey => {
   const normalized = normalize(profile);
 
@@ -713,7 +725,7 @@ const formatQuestionWithOptions = (name: string, flow: AssessmentFlow | null, in
     : "";
 
   const followUpLead = flow.pendingQuestion === "q2"
-    ? "Con base en lo que respondiste, quiero profundizar un poco:\n\n"
+    ? `${pickFollowUpLead()}\n\n`
     : "";
 
   return `${intro}${followUpLead}${question.prompt}\n\n- **A)** ${question.options.A}\n- **B)** ${question.options.B}\n- **C)** ${question.options.C}`;
