@@ -24,6 +24,13 @@ type ActionRecommendation = {
   description: string;
 };
 
+type ResourceRecommendation = {
+  title: string;
+  type: string;
+  why: string;
+  url: string;
+};
+
 type CompetencyDefinition = {
   key: string;
   label: string;
@@ -634,6 +641,155 @@ const pickFollowUpLead = (): string => {
   return FOLLOW_UP_LEADS[Math.floor(Math.random() * FOLLOW_UP_LEADS.length)];
 };
 
+const INTERNAL_WORKSHOP_URL = "https://ptltr.github.io/portal-uix/#talleres-uix";
+
+const WORKSHOP_RESOURCES: ResourceRecommendation[] = [
+  {
+    title: "Taller interno UIX: Comunicación efectiva y conversaciones difíciles",
+    type: "Taller UIX · interno",
+    why: "Te ayuda a estructurar conversaciones difíciles con claridad, empatía y acuerdos concretos.",
+    url: INTERNAL_WORKSHOP_URL,
+  },
+  {
+    title: "Taller interno UIX: Priorización y gestión del tiempo",
+    type: "Taller UIX · interno",
+    why: "Refuerza priorización, foco y seguimiento para sostener avances en semanas de alta carga.",
+    url: INTERNAL_WORKSHOP_URL,
+  },
+];
+
+const EXTERNAL_RESOURCES_BY_COMPETENCY: Record<string, ResourceRecommendation[]> = {
+  "comunicacion-efectiva": [
+    {
+      title: "Improving Communication Skills",
+      type: "Curso en Coursera · opción gratuita",
+      why: "Fortalece tu comunicación verbal y escrita para conversaciones de trabajo más claras.",
+      url: "https://www.coursera.org/learn/wharton-communication-skills",
+    },
+  ],
+  asertividad: [
+    {
+      title: "Improving Communication Skills",
+      type: "Curso en Coursera · opción gratuita",
+      why: "Te ayuda a comunicar límites y expectativas con mayor claridad y respeto.",
+      url: "https://www.coursera.org/learn/wharton-communication-skills",
+    },
+  ],
+  autogestion: [
+    {
+      title: "Work Smarter, Not Harder: Time Management",
+      type: "Curso en Coursera · opción gratuita",
+      why: "Mejora priorización, enfoque y consistencia en tu ejecución diaria.",
+      url: "https://www.coursera.org/learn/work-smarter-not-harder",
+    },
+  ],
+  "orientacion-a-resultados": [
+    {
+      title: "Work Smarter, Not Harder: Time Management",
+      type: "Curso en Coursera · opción gratuita",
+      why: "Te ayuda a mantener el foco en objetivos y no solo en tareas sueltas.",
+      url: "https://www.coursera.org/learn/work-smarter-not-harder",
+    },
+  ],
+  negociacion: [
+    {
+      title: "Negotiation Skills",
+      type: "Curso en Coursera · opción gratuita",
+      why: "Refuerza técnicas de negociación para llegar a acuerdos viables entre intereses distintos.",
+      url: "https://www.coursera.org/learn/negotiation-skills",
+    },
+  ],
+  "manejo-de-conflictos": [
+    {
+      title: "Negotiation Skills",
+      type: "Curso en Coursera · opción gratuita",
+      why: "Te da herramientas para manejar tensiones y conducir conversaciones complejas.",
+      url: "https://www.coursera.org/learn/negotiation-skills",
+    },
+  ],
+  "trabajo-en-equipo": [
+    {
+      title: "Teamwork Skills: Communicating Effectively in Groups",
+      type: "Curso en Coursera · opción gratuita",
+      why: "Mejora coordinación, acuerdos y colaboración en equipos multidisciplinarios.",
+      url: "https://www.coursera.org/learn/teamwork-skills-effective-communication",
+    },
+  ],
+  proactividad: [
+    {
+      title: "Creative Thinking: Techniques and Tools for Success",
+      type: "Curso en Coursera · opción gratuita",
+      why: "Ayuda a convertir ideas en propuestas accionables con mayor iniciativa.",
+      url: "https://www.coursera.org/learn/creative-thinking-techniques-and-tools-for-success",
+    },
+  ],
+  "aprendizaje-continuo": [
+    {
+      title: "Google Project Management Certificate",
+      type: "Curso de Google en Coursera · opción gratuita",
+      why: "Te brinda estructura para aprender, planear y ejecutar con mayor consistencia.",
+      url: "https://www.coursera.org/professional-certificates/google-project-management",
+    },
+  ],
+};
+
+const FALLBACK_EXTERNAL_RESOURCES: ResourceRecommendation[] = [
+  {
+    title: "How to speak so that people want to listen",
+    type: "Video en YouTube (TED) · gratis",
+    why: "Aporta técnicas concretas para comunicar ideas con claridad e impacto.",
+    url: "https://www.youtube.com/watch?v=eIho2S0ZahI",
+  },
+  {
+    title: "Fundamentals of Project Management",
+    type: "Alison · curso gratuito",
+    why: "Refuerza organización y seguimiento para sostener resultados en el tiempo.",
+    url: "https://alison.com/course/fundamentals-of-project-management-revised-2017",
+  },
+  {
+    title: "Introduction to Management Analysis and Strategies",
+    type: "Alison · curso gratuito",
+    why: "Fortalece liderazgo práctico y coordinación de planes de trabajo.",
+    url: "https://alison.com/course/introduction-to-management-analysis-and-strategies",
+  },
+];
+
+const buildResourceBlock = (resources: ResourceRecommendation[]): string => {
+  return resources.slice(0, 5).map((resource, index) => (
+    `**${index + 1}. ${resource.title}**\n` +
+    `- **Tipo:** ${resource.type}\n` +
+    `- **Por qué te va a servir:** ${resource.why}\n` +
+    `- **Recurso:** ${resource.url}`
+  )).join("\n\n");
+};
+
+const buildRecommendedResources = (opportunityKeys: string[]): ResourceRecommendation[] => {
+  const chosen: ResourceRecommendation[] = [];
+  const seen = new Set<string>();
+
+  const add = (resource?: ResourceRecommendation) => {
+    if (!resource || seen.has(resource.title)) return;
+    seen.add(resource.title);
+    chosen.push(resource);
+  };
+
+  // Always keep workshops visible among recommendations.
+  WORKSHOP_RESOURCES.forEach((resource) => add(resource));
+
+  for (const key of opportunityKeys) {
+    const candidates = EXTERNAL_RESOURCES_BY_COMPETENCY[key] || [];
+    candidates.forEach((resource) => add(resource));
+    if (chosen.length >= 5) break;
+  }
+
+  for (const fallback of FALLBACK_EXTERNAL_RESOURCES) {
+    if (chosen.length >= 5) break;
+    add(fallback);
+  }
+
+  return chosen.slice(0, 5);
+};
+
 const toProfileKey = (profile: string): ProfileKey => {
   const normalized = normalize(profile);
 
@@ -772,14 +928,24 @@ const buildRecoveredReportFromProgress = (args: {
   completionPercentage: number;
   deliverables: Array<{ title: string; summary: string; submittedAt: string }>;
 }): string => {
-  const normalizedActions = (args.assignedResources || []).slice(0, 5);
-  const actions = normalizedActions.length
-    ? normalizedActions.map((title, index) => `**${index + 1}. ${title}**\n- Mantén una práctica breve y constante alrededor de este hábito durante las próximas semanas.`).join("\n\n")
-    : [
-        "**1. Recuperar tu foco semanal**\n- Define una prioridad central por semana y revísala al cierre.",
-        "**2. Registrar aprendizajes aplicados**\n- Anota qué cambió en tu trabajo después de cada avance.",
-        "**3. Compartir acuerdos con claridad**\n- Resume por escrito decisiones y siguientes pasos después de reuniones clave.",
-      ].join("\n\n");
+  const recoveredResources = (args.assignedResources || []).slice(0, 5).map((title) => ({
+    title,
+    type: /taller\s+interno/i.test(title) ? "Taller UIX · interno" : "Curso recomendado",
+    why: "Te ayudará a reforzar hábitos prácticos de desarrollo en tu rol.",
+    url: /taller\s+interno/i.test(title)
+      ? INTERNAL_WORKSHOP_URL
+      : `https://www.google.com/search?q=${encodeURIComponent(title)}`,
+  }));
+
+  const resources = recoveredResources.length
+    ? recoveredResources
+    : [...WORKSHOP_RESOURCES, ...FALLBACK_EXTERNAL_RESOURCES].slice(0, 5);
+
+  const actionLines = [
+    "- **Recuperar tu foco semanal**: Define una prioridad central por semana y revísala al cierre.",
+    "- **Registrar aprendizajes aplicados**: Anota qué cambió en tu trabajo después de cada avance.",
+    "- **Compartir acuerdos con claridad**: Resume por escrito decisiones y siguientes pasos después de reuniones clave.",
+  ].join("\n");
 
   const latestDeliverable = args.deliverables.length ? args.deliverables[args.deliverables.length - 1] : null;
   const latestDeliverableText = latestDeliverable
@@ -797,8 +963,11 @@ const buildRecoveredReportFromProgress = (args: {
 - **Consistencia en la práctica**: Conviene sostener pequeños hábitos de desarrollo para que tu avance sea más visible y continuo.
 - **Aplicación en el trabajo diario**: Llevar cada aprendizaje a acciones concretas en tu rol hará que el progreso se note más rápido.
 
+### Recursos recomendados
+${buildResourceBlock(resources)}
+
 ### Acciones prácticas recomendadas
-${actions}
+${actionLines}
 
 ### Estado recuperado
 - **Correo de seguimiento:** ${args.email}
@@ -872,8 +1041,11 @@ const buildPersonalizedReport = (args: {
   }
 
   const actionLines = selectedActions.slice(0, 5).map((action, index) => {
-    return `**${index + 1}. ${action.title}**\n- ${action.description}`;
-  }).join("\n\n");
+    return `- **${action.title}**: ${action.description}`;
+  }).join("\n");
+
+  const resourceRecommendations = buildRecommendedResources(resolvedOpportunities.map((entry) => entry.competencyKey));
+  const resourceLines = buildResourceBlock(resourceRecommendations);
 
   const followUpEmailLine = args.employeeEmail
     ? `- **Correo de seguimiento:** ${args.employeeEmail}`
@@ -888,8 +1060,11 @@ ${strengthLines || "- **Base de desarrollo**: Ya cuentas con señales positivas 
 ### Áreas de oportunidad
 ${opportunityLines || "- **Profundizar en tu práctica**: Tu siguiente paso está en volver más consistentes las fortalezas que ya muestras."}
 
+### Recursos recomendados
+${resourceLines}
+
 ### Acciones prácticas recomendadas
-${actionLines || "**1. Sostener una práctica breve**\n- Define un hábito concreto por semana y dale seguimiento diario."}
+${actionLines || "- **Sostener una práctica breve**: Define un hábito concreto por semana y dale seguimiento diario."}
 
 ### Seguimiento
 ${followUpEmailLine}
@@ -1305,7 +1480,7 @@ export function useChat() {
         setFinalReport(nextReport);
         setCurrentStep(advanced.flow.competencyOrder.length * 2);
         shouldCompleteAfterStream = true;
-        fullResponseContent = `${buildTransitionMessage()}\n\nGracias por completar esta conversación guiada. Ya preparé tu resumen de desarrollo. Usa **Ver avance** para revisarlo.`;
+        fullResponseContent = `${buildTransitionMessage()}\n\nGracias por completar esta conversación guiada. Ya preparé tu resumen de desarrollo. Puedes ver tu progreso desde **Ver avance** y ver tu plan de desarrollo en **Descargar PDF**.`;
       } else {
         const transition = buildTransitionMessage();
         const nextQuestion = formatQuestionWithOptions(employeeName, advanced.flow, false);
