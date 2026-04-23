@@ -133,6 +133,14 @@ const parseSessionSnapshot = (value: unknown): PersistedChatState | null => {
     ? raw.finalReport
     : (typeof raw.report === "string" ? raw.report : "");
 
+  const rawAssessmentFlow = raw.assessmentFlow;
+  const hasAssessmentFlow = Boolean(
+    rawAssessmentFlow
+    && typeof rawAssessmentFlow === "object"
+    && Array.isArray((rawAssessmentFlow as Record<string, unknown>).competencyOrder)
+    && (rawAssessmentFlow as Record<string, unknown>).assessments
+  );
+
   return {
     conversationId: typeof raw.conversationId === "number" ? raw.conversationId : null,
     messages: messages as PersistedChatState["messages"],
@@ -148,6 +156,10 @@ const parseSessionSnapshot = (value: unknown): PersistedChatState | null => {
       ? (raw.signals as PersistedChatState["signals"])
       : { strengths: {}, opportunities: {} },
     updatedAt: typeof raw.updatedAt === "number" ? raw.updatedAt : Date.now(),
+    selectedProfile: typeof raw.selectedProfile === "string" ? raw.selectedProfile : "",
+    assessmentFlow: hasAssessmentFlow
+      ? (rawAssessmentFlow as PersistedChatState["assessmentFlow"])
+      : null,
   };
 };
 
