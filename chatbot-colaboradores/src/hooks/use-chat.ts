@@ -1169,7 +1169,15 @@ export function useChat() {
       }
 
       const parsed = JSON.parse(raw) as PersistedChatState;
-      applyPersistedState(parsed);
+      const hasFinalReport = Boolean(String(parsed.finalReport || "").trim());
+      const hasCompatibleFlow = isValidAssessmentFlow(parsed.assessmentFlow);
+
+      if (hasFinalReport || hasCompatibleFlow) {
+        applyPersistedState(parsed);
+      } else {
+        // Drop legacy in-progress sessions from the previous open-ended flow.
+        localStorage.removeItem(CHAT_STORAGE_KEY);
+      }
     } catch {
       // Ignore malformed local data.
     } finally {
