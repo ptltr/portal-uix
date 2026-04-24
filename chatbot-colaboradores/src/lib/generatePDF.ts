@@ -81,6 +81,8 @@ const PDF_FALLBACK_RECOMMENDATIONS: Recommendation[] = [
   },
 ];
 
+const INTERNAL_WORKSHOP_URL = "https://ptltr.github.io/portal-uix/#talleres-uix";
+
 const normalizeTitle = (value: string): string => {
   return value
     .normalize("NFD")
@@ -188,7 +190,7 @@ function sanitizeRecommendations(items: Recommendation[]): Recommendation[] {
         name: item.name || "Taller interno UIX",
         type: item.type || "Taller UIX · gratuito",
         why: item.why || getInternalWorkshopBenefitByTitle(item.name || ""),
-        url: "Disponible internamente en UIX. Acércate con Capital Humano para más información.",
+        url: INTERNAL_WORKSHOP_URL,
       };
     }
 

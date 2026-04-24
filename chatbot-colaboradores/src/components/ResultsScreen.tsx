@@ -95,6 +95,11 @@ const normalizeTitle = (value: string): string => {
 
   const INTERNAL_WORKSHOP_URL = 'https://ptltr.github.io/portal-uix/#talleres-uix';
 
+  const INTERNAL_WORKSHOP_TITLES = [
+    'Taller interno UIX: Comunicación efectiva y conversaciones difíciles',
+    'Taller interno UIX: Priorización y gestión del tiempo',
+  ];
+
 const getInternalWorkshopBenefitByTitle = (title: string): string => {
   const normalized = normalizeTitle(title);
 
@@ -194,7 +199,8 @@ const getExternalResourceMetaByTitle = (title: string, index: number) => {
 };
 
 const buildResourceSectionFromAssigned = (assignedResources: string[]): string => {
-  const source = assignedResources.slice(0, 5);
+  const normalizedAssigned = assignedResources.filter(Boolean);
+  const source = [...INTERNAL_WORKSHOP_TITLES, ...normalizedAssigned].slice(0, 5);
 
   const resolved = source.length
     ? source.map((title, index) => getExternalResourceMetaByTitle(title, index))
@@ -212,8 +218,10 @@ const mergeAssignedResourcesIntoReport = (reportContent: string, assignedResourc
   if (!reportContent) return reportContent;
 
   const current = parseRecommendedResourceTitles(reportContent);
-  // Preserve the resources block created by the guided report and only backfill when missing.
-  const shouldReplaceResources = current.length === 0;
+  const hasInternalWorkshop = current.some((title) => /taller\s+interno/i.test(title));
+  const hasDirectLinks = /-\s\*\*Recurso:\*\*\s*https?:\/\//i.test(reportContent);
+  // Rebuild resources section if it's missing, lacks internal workshops, or lacks direct links.
+  const shouldReplaceResources = current.length === 0 || !hasInternalWorkshop || !hasDirectLinks;
   if (!shouldReplaceResources) return reportContent;
 
   const replacementBlock = `### Recursos recomendados\n${buildResourceSectionFromAssigned(assignedResources)}`;
