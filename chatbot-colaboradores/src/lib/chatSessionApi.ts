@@ -93,7 +93,13 @@ const sessionHasMeaningfulContent = (snapshot: PersistedChatState): boolean => {
 const snapshotBelongsToEmail = (snapshot: PersistedChatState, requestedEmail: string): boolean => {
   const normalizedRequested = normalizeEmail(requestedEmail);
   const normalizedSnapshotEmail = normalizeEmail(String(snapshot.employeeEmail || ""));
-  return Boolean(normalizedRequested) && normalizedSnapshotEmail === normalizedRequested;
+  if (!normalizedRequested) return false;
+
+  // Legacy snapshots may not include employeeEmail even when fetched by a specific email.
+  // Accept those, but still reject explicit mismatches.
+  if (!normalizedSnapshotEmail) return true;
+
+  return normalizedSnapshotEmail === normalizedRequested;
 };
 
 const parseSessionSnapshot = (value: unknown): PersistedChatState | null => {
@@ -250,7 +256,11 @@ const fetchSessionSnapshotFromAppsScript = async (baseUrl: string, email: string
     if (body && typeof body === "object" && body.ok === false) return null;
     const parsed = parseSessionSnapshot(body);
     if (!parsed || !sessionHasMeaningfulContent(parsed)) return null;
-    return snapshotBelongsToEmail(parsed, email) ? parsed : null;
+    if (!snapshotBelongsToEmail(parsed, email)) return null;
+    return {
+      ...parsed,
+      employeeEmail: normalizeEmail(parsed.employeeEmail || email),
+    };
   } catch {
     return null;
   }
@@ -262,7 +272,11 @@ const fetchSessionSnapshotFromRest = async (baseUrl: string, email: string): Pro
     if (response.status === 404 || !response.ok) return null;
     const parsed = parseSessionSnapshot(await response.json());
     if (!parsed || !sessionHasMeaningfulContent(parsed)) return null;
-    return snapshotBelongsToEmail(parsed, email) ? parsed : null;
+    if (!snapshotBelongsToEmail(parsed, email)) return null;
+    return {
+      ...parsed,
+      employeeEmail: normalizeEmail(parsed.employeeEmail || email),
+    };
   } catch {
     return null;
   }
