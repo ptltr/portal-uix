@@ -780,9 +780,13 @@ const STRENGTH_RESOURCE_TITLE_EXCLUSIONS: Record<string, string[]> = {
   "comunicacion-efectiva": [
     "Improving Communication Skills",
     "How to speak so that people want to listen",
+    "Taller interno UIX: Comunicación efectiva y conversaciones difíciles",
   ],
   asertividad: ["Negotiation Skills"],
-  autogestion: ["Work Smarter, Not Harder: Time Management"],
+  autogestion: [
+    "Work Smarter, Not Harder: Time Management",
+    "Taller interno UIX: Priorización y gestión del tiempo",
+  ],
   "trabajo-en-equipo": ["Teamwork Skills: Communicating Effectively in Groups"],
   negociacion: ["Negotiation Skills"],
   proactividad: ["Creative Thinking: Techniques and Tools for Success"],
