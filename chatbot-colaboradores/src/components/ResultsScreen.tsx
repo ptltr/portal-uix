@@ -225,8 +225,13 @@ const buildResourceSectionFromAssigned = (assignedResources: string[]): string =
 
 const mergeAssignedResourcesIntoReport = (reportContent: string, assignedResources: string[]): string => {
   if (!reportContent) return reportContent;
+  const currentResources = parseRecommendedResourceTitles(reportContent);
+  if (currentResources.length > 0) {
+    // Keep the recommendations generated in the current report.
+    return reportContent;
+  }
 
-  // Always rebuild to enforce canonical links and internal workshop message.
+  // If report has no recommendations, recover them from assigned resources.
 
   const replacementBlock = `### Recursos recomendados\n${buildResourceSectionFromAssigned(assignedResources)}`;
   const resourcesSectionPattern = /###\s+(Recursos recomendados|Tus 5 recursos de desarrollo|Recursos de desarrollo)[\s\S]*?(?=\n###\s|\n---REPORTE_FIN---|$)/i;
@@ -366,8 +371,9 @@ export function ResultsScreen({ messages, onRestart, onBackToChat, profile, empl
   );
 
   const recommendedResources = useMemo(() => {
-    if (resourcesFromProgress.length > 0) return resourcesFromProgress;
-    return parseRecommendedResourceTitles(content);
+    const fromReport = parseRecommendedResourceTitles(content).filter(Boolean);
+    if (fromReport.length > 0) return fromReport;
+    return resourcesFromProgress;
   }, [content, resourcesFromProgress]);
   const derivedProgress = useMemo(() => {
     const deliverables = progress?.deliverables || [];
