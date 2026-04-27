@@ -1317,7 +1317,15 @@ export function useChat() {
     if (!snapshot) return false;
     const parsedMessages = normalizeIncomingMessages(snapshot.messages);
     const normalizedReport = snapshot.finalReport || "";
-    return parsedMessages.length > 0 || Boolean(normalizedReport);
+    const hasCompatibleFlow = Boolean(
+      rebuildAssessmentFlowFromSnapshot({
+        selectedProfile: snapshot.selectedProfile,
+        assessmentFlow: snapshot.assessmentFlow,
+        messages: parsedMessages,
+      })
+    );
+    const hasConversationMeta = typeof snapshot.conversationId === "number" && Boolean(String(snapshot.selectedProfile || "").trim());
+    return parsedMessages.length > 0 || Boolean(normalizedReport) || hasCompatibleFlow || hasConversationMeta;
   }, []);
 
   const isResumeUsableSnapshot = useCallback((snapshot: PersistedChatState | null | undefined): boolean => {
@@ -1664,8 +1672,8 @@ export function useChat() {
       getCollaboratorProgress(normalizedEmail).catch(() => null),
     ]);
 
-    const validRemote = remoteSession && hasSnapshotContent(remoteSession) ? remoteSession : null;
-    const validLocal = localSession && hasSnapshotContent(localSession) ? localSession : null;
+    const validRemote = remoteSession && isResumeUsableSnapshot(remoteSession) ? remoteSession : null;
+    const validLocal = localSession && isResumeUsableSnapshot(localSession) ? localSession : null;
     const hasRecoverableProgress = Boolean(
       progressResult && (
         (progressResult.assignedResources?.length || 0) > 0
@@ -1728,7 +1736,7 @@ export function useChat() {
     }
 
     return false;
-  }, [applyPersistedState, employeeName, hasSnapshotContent, isResumeUsableSnapshot, pickPreferredSnapshot, readLocalSnapshotForEmail, selectedProfile]);
+  }, [applyPersistedState, employeeName, isResumeUsableSnapshot, pickPreferredSnapshot, readLocalSnapshotForEmail, selectedProfile]);
 
   const recoverSessionFromProgress = useCallback(async (email: string, fallbackName?: string): Promise<boolean> => {
     const normalizedEmail = normalizeEmail(email);
