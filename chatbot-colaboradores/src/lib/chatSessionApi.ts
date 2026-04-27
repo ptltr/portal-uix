@@ -90,10 +90,23 @@ const sessionHasMeaningfulContent = (snapshot: PersistedChatState): boolean => {
   return hasMessages || hasReport || hasFlow || (hasProfile && hasConversationId);
 };
 
+const extractFollowUpEmailFromReport = (report: string): string => {
+  const content = String(report || "");
+  if (!content) return "";
+  const match = content.match(/Correo\s+de\s+seguimiento\s*:\s*([^\n]+)/i);
+  if (!match || !match[1]) return "";
+  const candidate = String(match[1]).trim().split(/\s+/)[0] || "";
+  return normalizeEmail(candidate);
+};
+
 const snapshotBelongsToEmail = (snapshot: PersistedChatState, requestedEmail: string): boolean => {
   const normalizedRequested = normalizeEmail(requestedEmail);
   const normalizedSnapshotEmail = normalizeEmail(String(snapshot.employeeEmail || ""));
+  const normalizedReportEmail = extractFollowUpEmailFromReport(String(snapshot.finalReport || ""));
   if (!normalizedRequested) return false;
+
+  // If report content explicitly indicates a follow-up email, it must match request.
+  if (normalizedReportEmail && normalizedReportEmail !== normalizedRequested) return false;
 
   // Legacy snapshots may not include employeeEmail even when fetched by a specific email.
   // Accept those, but still reject explicit mismatches.

@@ -154,11 +154,9 @@ export default function Home() {
     if (payload) {
       const resolvedEmail = (payload.userEmail || employeeEmail).trim();
       const resolvedName = (payload.userName || employeeName).trim() || buildFallbackNameFromEmail(resolvedEmail);
-      const resolvedTrainerName = (payload.trainerName || trainerName).trim();
 
-      setEmployeeName(resolvedName);
-      setEmployeeEmail(resolvedEmail);
-      setTrainerName(resolvedTrainerName);
+      // Important: do not set employee fields before loading the target email session.
+      // Doing so can trigger autosave side effects and overwrite another email's snapshot.
       if (payload.profile) {
         setSelectedProfile(payload.profile);
       }
