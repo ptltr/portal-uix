@@ -1816,6 +1816,10 @@ export function useChat() {
   const loadSessionForEmail = useCallback(async (email: string): Promise<boolean> => {
     const normalizedEmail = normalizeEmail(email);
 
+    // Always clear any previously hydrated state (e.g. from another email in localStorage)
+    // before loading the session for this specific email. This prevents cross-email contamination.
+    clearRuntimeState();
+
     const [remoteSession, localSession, progressResult] = await Promise.all([
       fetchSessionByEmail(normalizedEmail),
       Promise.resolve(readLocalSnapshotForEmail(normalizedEmail)),
@@ -1886,7 +1890,7 @@ export function useChat() {
     }
 
     return false;
-  }, [applyPersistedState, employeeName, isResumeUsableSnapshot, pickPreferredSnapshot, readLocalSnapshotForEmail, selectedProfile]);
+  }, [applyPersistedState, clearRuntimeState, employeeName, isResumeUsableSnapshot, pickPreferredSnapshot, readLocalSnapshotForEmail, selectedProfile]);
 
   const recoverSessionFromProgress = useCallback(async (email: string, fallbackName?: string): Promise<boolean> => {
     const normalizedEmail = normalizeEmail(email);
