@@ -629,6 +629,8 @@ const normalize = (value: string): string =>
     .replace(/\s+/g, " ")
     .trim();
 
+  const normalizeTitleKey = (value: string): string => normalize(value).replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim();
+
 const FOLLOW_UP_LEADS = [
   "Con base en lo que respondiste, quiero profundizar un poco:",
   "Gracias, para entenderlo mejor te hago una pregunta breve adicional:",
@@ -756,10 +758,18 @@ const FALLBACK_EXTERNAL_RESOURCES: ResourceRecommendation[] = [
 
 const buildResourceBlock = (resources: ResourceRecommendation[]): string => {
   return resources.slice(0, 5).map((resource, index) => (
-    `**${index + 1}. ${resource.title}**\n` +
-    `- **Tipo:** ${resource.type}\n` +
-    `- **Por qué te va a servir:** ${resource.why}\n` +
-    `- **Recurso:** ${resource.url}`
+    // Internal workshops must show contact text only, without links.
+    (() => {
+      const isInternalWorkshop = /taller\s+interno/i.test(resource.title || "");
+      const resourceValue = isInternalWorkshop
+        ? "Acércate con Capital Humano para más información."
+        : resource.url;
+
+      return `**${index + 1}. ${resource.title}**\n` +
+        `- **Tipo:** ${resource.type}\n` +
+        `- **Por qué te va a servir:** ${resource.why}\n` +
+        `- **Recurso:** ${resourceValue}`;
+    })()
   )).join("\n\n");
 };
 
@@ -803,6 +813,26 @@ const toProfileKey = (profile: string): ProfileKey => {
 const parseRecommendedResourceTitles = (report: string): string[] => {
   const matches = [...report.matchAll(/\*\*\d+\.\s([^\n*]+)\*\*/g)];
   return matches.map((match) => match[1].trim()).filter(Boolean);
+};
+
+const findCanonicalResourceByTitle = (title: string): ResourceRecommendation | null => {
+  const titleKey = normalizeTitleKey(title);
+  if (!titleKey) return null;
+
+  const allResources = [
+    ...Object.values(EXTERNAL_RESOURCES_BY_COMPETENCY).flat(),
+    ...FALLBACK_EXTERNAL_RESOURCES,
+  ];
+
+  for (const resource of allResources) {
+    const candidateKey = normalizeTitleKey(resource.title);
+    if (!candidateKey) continue;
+    if (titleKey === candidateKey || titleKey.includes(candidateKey) || candidateKey.includes(titleKey)) {
+      return resource;
+    }
+  }
+
+  return null;
 };
 
 const classifyAssessment = (q1: OptionId, q2?: OptionId): Classification => {
@@ -929,12 +959,22 @@ const buildRecoveredReportFromProgress = (args: {
   deliverables: Array<{ title: string; summary: string; submittedAt: string }>;
 }): string => {
   const recoveredResources = (args.assignedResources || []).slice(0, 5).map((title) => ({
+    ...(findCanonicalResourceByTitle(title) || {
+      title,
+      type: "Curso recomendado",
+      why: "Te ayudará a reforzar hábitos prácticos de desarrollo en tu rol.",
+      url: `https://www.google.com/search?q=${encodeURIComponent(title)}`,
+    }),
     title,
-    type: /taller\s+interno/i.test(title) ? "Taller UIX · interno" : "Curso recomendado",
-    why: "Te ayudará a reforzar hábitos prácticos de desarrollo en tu rol.",
+    type: /taller\s+interno/i.test(title)
+      ? "Taller UIX · interno"
+      : (findCanonicalResourceByTitle(title)?.type || "Curso recomendado"),
+    why: /taller\s+interno/i.test(title)
+      ? "Te ayudará a reforzar tus áreas de oportunidad con acciones prácticas aplicables a tu rol."
+      : (findCanonicalResourceByTitle(title)?.why || "Te ayudará a reforzar hábitos prácticos de desarrollo en tu rol."),
     url: /taller\s+interno/i.test(title)
-      ? INTERNAL_WORKSHOP_URL
-      : `https://www.google.com/search?q=${encodeURIComponent(title)}`,
+      ? "Acércate con Capital Humano para más información."
+      : (findCanonicalResourceByTitle(title)?.url || `https://www.google.com/search?q=${encodeURIComponent(title)}`),
   }));
 
   const resources = recoveredResources.length

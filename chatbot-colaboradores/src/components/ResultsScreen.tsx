@@ -42,7 +42,7 @@ function normalizeReportContent(content: string): string {
     .replace(/Recuperado desde tu seguimiento previo en Capital Humano\.?/gi, 'Recuperado de tu avance anterior.')
     .replace(/Recuperamos tu seguimiento desde Capital Humano\.?/gi, 'Recuperamos tu avance anterior.')
     .replace(/Capital Humano puede ver este seguimiento/gi, 'El Área de Capital Humano puede ver este avance')
-    .replace(/Acércate con Capital Humano para más información\.?/gi, 'Consulta con el Área de Capital Humano para más información.')
+    .replace(/Consulta con el Área de Capital Humano para más información\.?/gi, 'Acércate con Capital Humano para más información.')
     .replace(/Recuperado desde tu seguimiento previo para que puedas retomar tu plan sin perder contexto\.?/gi, 'Te ayudará a reforzar tus áreas de oportunidad con acciones prácticas aplicables a tu rol.')
     .trim();
 }
@@ -90,10 +90,12 @@ const normalizeTitle = (value: string): string => {
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
     .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/\s+/g, ' ')
     .trim();
 };
 
-  const INTERNAL_WORKSHOP_URL = 'https://ptltr.github.io/portal-uix/#talleres-uix';
+const INTERNAL_WORKSHOP_MESSAGE = 'Acércate con Capital Humano para más información.';
 
   const INTERNAL_WORKSHOP_TITLES = [
     'Taller interno UIX: Comunicación efectiva y conversaciones difíciles',
@@ -182,11 +184,13 @@ const getExternalResourceMetaByTitle = (title: string, index: number) => {
       title,
       type: 'Taller UIX · gratuito',
       why: getInternalWorkshopBenefitByTitle(title),
-      url: INTERNAL_WORKSHOP_URL,
+      url: INTERNAL_WORKSHOP_MESSAGE,
     };
   }
 
-  const known = EXTERNAL_RESOURCE_BY_TITLE[normalizeTitle(title)];
+  const normalized = normalizeTitle(title);
+  const known = EXTERNAL_RESOURCE_BY_TITLE[normalized]
+    || Object.entries(EXTERNAL_RESOURCE_BY_TITLE).find(([key]) => normalized.includes(key) || key.includes(normalized))?.[1];
   if (known) return { title, ...known };
 
   const fallback = EXTERNAL_RESOURCE_FALLBACK[index % EXTERNAL_RESOURCE_FALLBACK.length];
@@ -194,7 +198,7 @@ const getExternalResourceMetaByTitle = (title: string, index: number) => {
     title,
     type: fallback.type,
     why: fallback.why,
-    url: `https://www.google.com/search?q=${encodeURIComponent(title)}`,
+    url: fallback.url,
   };
 };
 
@@ -207,22 +211,22 @@ const buildResourceSectionFromAssigned = (assignedResources: string[]): string =
     : EXTERNAL_RESOURCE_FALLBACK;
 
   return resolved.slice(0, 5).map((item, index) => (
-    `**${index + 1}. ${item.title}**\n` +
-    `- **Tipo:** ${item.type}\n` +
-    `- **Por qué te va a servir:** ${item.why}\n` +
-    `- **Recurso:** ${item.url}`
+    (() => {
+      const isInternalWorkshop = /taller\s+interno/i.test(item.title || '');
+      const resourceValue = isInternalWorkshop ? INTERNAL_WORKSHOP_MESSAGE : item.url;
+
+      return `**${index + 1}. ${item.title}**\n` +
+        `- **Tipo:** ${item.type}\n` +
+        `- **Por qué te va a servir:** ${item.why}\n` +
+        `- **Recurso:** ${resourceValue}`;
+    })()
   )).join('\n\n');
 };
 
 const mergeAssignedResourcesIntoReport = (reportContent: string, assignedResources: string[]): string => {
   if (!reportContent) return reportContent;
 
-  const current = parseRecommendedResourceTitles(reportContent);
-  const hasInternalWorkshop = current.some((title) => /taller\s+interno/i.test(title));
-  const hasDirectLinks = /-\s\*\*Recurso:\*\*\s*https?:\/\//i.test(reportContent);
-  // Rebuild resources section if it's missing, lacks internal workshops, or lacks direct links.
-  const shouldReplaceResources = current.length === 0 || !hasInternalWorkshop || !hasDirectLinks;
-  if (!shouldReplaceResources) return reportContent;
+  // Always rebuild to enforce canonical links and internal workshop message.
 
   const replacementBlock = `### Recursos recomendados\n${buildResourceSectionFromAssigned(assignedResources)}`;
   const resourcesSectionPattern = /###\s+(Recursos recomendados|Tus 5 recursos de desarrollo|Recursos de desarrollo)[\s\S]*?(?=\n###\s|\n---REPORTE_FIN---|$)/i;

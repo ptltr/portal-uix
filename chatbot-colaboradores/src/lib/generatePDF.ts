@@ -81,20 +81,20 @@ const PDF_FALLBACK_RECOMMENDATIONS: Recommendation[] = [
   },
 ];
 
-const INTERNAL_WORKSHOP_URL = "https://ptltr.github.io/portal-uix/#talleres-uix";
+const INTERNAL_WORKSHOP_MESSAGE = "Acércate con Capital Humano para más información.";
 
 const PDF_INTERNAL_WORKSHOP_RECOMMENDATIONS: Recommendation[] = [
   {
     name: "Taller interno UIX: Comunicación efectiva y conversaciones difíciles",
     type: "Taller UIX · interno",
     why: "Te ayuda a estructurar conversaciones difíciles con claridad, empatía y acuerdos concretos.",
-    url: INTERNAL_WORKSHOP_URL,
+    url: INTERNAL_WORKSHOP_MESSAGE,
   },
   {
     name: "Taller interno UIX: Priorización y gestión del tiempo",
     type: "Taller UIX · interno",
     why: "Refuerza priorización, foco y seguimiento para sostener avances en semanas de alta carga.",
-    url: INTERNAL_WORKSHOP_URL,
+    url: INTERNAL_WORKSHOP_MESSAGE,
   },
 ];
 
@@ -103,6 +103,8 @@ const normalizeTitle = (value: string): string => {
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/\s+/g, " ")
     .trim();
 };
 
@@ -194,7 +196,8 @@ const EXTERNAL_RECOMMENDATION_BY_TITLE: Record<string, Recommendation> = {
 function sanitizeRecommendations(items: Recommendation[]): Recommendation[] {
   return items.map((item, index) => {
     const titleKey = normalizeTitle(item.name || "");
-    const mapped = EXTERNAL_RECOMMENDATION_BY_TITLE[titleKey];
+    const mapped = EXTERNAL_RECOMMENDATION_BY_TITLE[titleKey]
+      || Object.entries(EXTERNAL_RECOMMENDATION_BY_TITLE).find(([key]) => titleKey.includes(key) || key.includes(titleKey))?.[1];
     const urlRaw = String(item.url || "").trim();
     const looksInternal = /internamente|capital humano/i.test(urlRaw);
     const isInternalWorkshop = /taller\s+interno/i.test(item.name || "");
@@ -205,7 +208,7 @@ function sanitizeRecommendations(items: Recommendation[]): Recommendation[] {
         name: item.name || "Taller interno UIX",
         type: item.type || "Taller UIX · gratuito",
         why: item.why || getInternalWorkshopBenefitByTitle(item.name || ""),
-        url: INTERNAL_WORKSHOP_URL,
+        url: INTERNAL_WORKSHOP_MESSAGE,
       };
     }
 
@@ -233,15 +236,12 @@ function sanitizeRecommendations(items: Recommendation[]): Recommendation[] {
 
     if (looksInternal || !urlRaw) {
       const fallback = PDF_FALLBACK_RECOMMENDATIONS[index % PDF_FALLBACK_RECOMMENDATIONS.length];
-      const searchUrl = item.name
-        ? `https://www.google.com/search?q=${encodeURIComponent(item.name)}`
-        : fallback.url;
 
       return {
         name: item.name || fallback.name,
         type: item.type || fallback.type,
         why: item.why || fallback.why,
-        url: searchUrl,
+        url: mapped?.url || fallback.url,
       };
     }
 
@@ -506,7 +506,7 @@ export function generatePDF(content: string, profile: string, date: string) {
       urlRaw.toLowerCase().includes("internamente") ||
       (!urlRaw.startsWith("http") && urlRaw !== "");
     const urlDisplay = isInternal
-      ? "Disponible internamente en UIX. Consulta con el Área de Capital Humano para más información."
+      ? INTERNAL_WORKSHOP_MESSAGE
       : urlRaw.length > 60
       ? urlRaw.slice(0, 57) + "..."
       : urlRaw;
