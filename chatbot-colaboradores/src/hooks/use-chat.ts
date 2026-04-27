@@ -790,6 +790,17 @@ const STRENGTH_RESOURCE_TITLE_EXCLUSIONS: Record<string, string[]> = {
   "mentalidad-de-negocio": ["Introduction to Management Analysis and Strategies"],
 };
 
+const getExcludedResourceTitlesForStrengths = (strengthKeys: string[]): Set<string> => {
+  const excluded = new Set<string>();
+
+  for (const key of strengthKeys) {
+    (STRENGTH_RESOURCE_TITLE_EXCLUSIONS[key] || []).forEach((title) => excluded.add(title));
+    (EXTERNAL_RESOURCES_BY_COMPETENCY[key] || []).forEach((resource) => excluded.add(resource.title));
+  }
+
+  return excluded;
+};
+
 const FALLBACK_EXTERNAL_RESOURCES: ResourceRecommendation[] = [
   {
     title: "How to speak so that people want to listen",
@@ -831,9 +842,7 @@ const buildResourceBlock = (resources: ResourceRecommendation[]): string => {
 const buildRecommendedResources = (opportunityKeys: string[], strengthKeys: string[] = []): ResourceRecommendation[] => {
   const chosen: ResourceRecommendation[] = [];
   const seen = new Set<string>();
-  const excludedTitles = new Set<string>(
-    strengthKeys.flatMap((key) => STRENGTH_RESOURCE_TITLE_EXCLUSIONS[key] || [])
-  );
+  const excludedTitles = getExcludedResourceTitlesForStrengths(strengthKeys);
 
   const add = (resource?: ResourceRecommendation) => {
     if (!resource || seen.has(resource.title) || excludedTitles.has(resource.title)) return;
@@ -865,6 +874,59 @@ const buildRecommendedResources = (opportunityKeys: string[], strengthKeys: stri
   }
 
   return chosen.slice(0, 5);
+};
+
+const extractSection = (report: string, headings: string[]): string => {
+  for (const heading of headings) {
+    const escaped = heading.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const pattern = new RegExp(`###\\s+${escaped}\\s*([\\s\\S]*?)(?=\\n###\\s|\\n---REPORTE_FIN---|$)`, "i");
+    const match = report.match(pattern);
+    if (match?.[1]) return match[1];
+  }
+  return "";
+};
+
+const parseCompetencyKeysFromSection = (sectionContent: string): string[] => {
+  if (!sectionContent.trim()) return [];
+
+  const keys = new Set<string>();
+  const labels = Object.values(COMPETENCIES).map((item) => ({ key: item.key, normalizedLabel: normalize(item.label) }));
+  const matches = [...sectionContent.matchAll(/\*\*([^*]+)\*\*/g)].map((match) => String(match[1] || "").trim());
+
+  for (const label of matches) {
+    const normalizedLabel = normalize(label);
+    if (!normalizedLabel) continue;
+
+    const resolved = labels.find((item) => normalizedLabel === item.normalizedLabel
+      || normalizedLabel.includes(item.normalizedLabel)
+      || item.normalizedLabel.includes(normalizedLabel));
+
+    if (resolved) keys.add(resolved.key);
+  }
+
+  return [...keys];
+};
+
+const rebuildReportResourcesByCompetencies = (report: string): string => {
+  if (!report.trim()) return report;
+
+  const strengthsSection = extractSection(report, ["Fortalezas", "Tus fortalezas"]);
+  const opportunitiesSection = extractSection(report, ["Áreas de oportunidad", "Areas de oportunidad", "Lo que más puedes potenciar", "Lo que puedes potenciar"]);
+
+  const strengthKeys = parseCompetencyKeysFromSection(strengthsSection);
+  const opportunityKeys = parseCompetencyKeysFromSection(opportunitiesSection).filter((key) => !strengthKeys.includes(key));
+
+  if (!opportunityKeys.length && !strengthKeys.length) return report;
+
+  const recommendations = buildRecommendedResources(opportunityKeys, strengthKeys);
+  const replacementBlock = `### Recursos recomendados\n${buildResourceBlock(recommendations)}`;
+  const resourcesSectionPattern = /###\s+(Recursos recomendados|Tus 5 recursos de desarrollo|Recursos de desarrollo)[\s\S]*?(?=\n###\s|\n---REPORTE_FIN---|$)/i;
+
+  if (resourcesSectionPattern.test(report)) {
+    return report.replace(resourcesSectionPattern, replacementBlock);
+  }
+
+  return `${report.trim()}\n\n${replacementBlock}`;
 };
 
 const toProfileKey = (profile: string): ProfileKey => {
@@ -1194,7 +1256,7 @@ const buildPersonalizedReport = (args: {
     ? `- **Correo de seguimiento:** ${args.employeeEmail}`
     : "- **Correo de seguimiento:** Pendiente de registro";
 
-  return `---REPORTE_INICIO---
+  const report = `---REPORTE_INICIO---
 ## Tu resumen de desarrollo profesional
 
 ### Fortalezas
@@ -1212,6 +1274,8 @@ ${actionLines || "- **Sostener una práctica breve**: Define un hábito concreto
 ### Seguimiento
 ${followUpEmailLine}
 ---REPORTE_FIN---`;
+
+  return rebuildReportResourcesByCompetencies(report);
 };
 
 const advanceAssessmentFlow = (flow: AssessmentFlow, answer: OptionId) => {
@@ -1337,7 +1401,8 @@ export function useChat() {
           employeeEmail: parsed.employeeEmail || "",
         })
       : normalizedReport;
-    const hasReport = Boolean(regeneratedReport.trim());
+    const refreshedReport = rebuildReportResourcesByCompetencies(regeneratedReport);
+    const hasReport = Boolean(refreshedReport.trim());
     const hasMeaningfulContent = parsedMessages.length > 0 || hasReport || Boolean(rebuiltFlow);
     const hydratedMessages = parsedMessages.length
       ? parsedMessages
@@ -1359,7 +1424,7 @@ export function useChat() {
     setEmployeeEmail(parsed.employeeEmail || "");
     setTrainerName(parsed.trainerName || "");
     setCurrentStep(hasMeaningfulContent && typeof parsed.currentStep === "number" ? parsed.currentStep : 0);
-    setFinalReport(regeneratedReport);
+    setFinalReport(refreshedReport);
     setFollowUpCount(hasMeaningfulContent && typeof parsed.followUpCount === "number" ? parsed.followUpCount : 0);
     setIsInFollowUp(hasMeaningfulContent && Boolean(parsed.isInFollowUp));
     setSelectedProfile(parsed.selectedProfile || "");
