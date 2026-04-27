@@ -177,6 +177,36 @@ const EXTERNAL_RESOURCE_BY_TITLE: Record<string, { type: string; why: string; ur
   },
 };
 
+const STRENGTH_LINKED_RESOURCE_TITLES: Record<string, string[]> = {
+  [normalizeTitle('Comunicación efectiva')]: [
+    'Improving Communication Skills',
+    'How to speak so that people want to listen',
+    'Taller interno UIX: Comunicación efectiva y conversaciones difíciles',
+  ],
+  [normalizeTitle('Autogestión y responsabilidad')]: [
+    'Work Smarter, Not Harder: Time Management',
+    'Taller interno UIX: Priorización y gestión del tiempo',
+  ],
+};
+
+const parseStrengthResourceExclusions = (reportContent: string): Set<string> => {
+  const excluded = new Set<string>();
+  const strengthsMatch = reportContent.match(/###\s+(Fortalezas|Tus fortalezas)[\s\S]*?(?=\n###\s|\n---REPORTE_FIN---|$)/i);
+  const strengthsBlock = strengthsMatch?.[0] || '';
+  const strengthLabels = [...strengthsBlock.matchAll(/-\s*\*\*([^*]+)\*\*/g)]
+    .map((match) => normalizeTitle(String(match[1] || '')))
+    .filter(Boolean);
+
+  for (const label of strengthLabels) {
+    const mapped = Object.entries(STRENGTH_LINKED_RESOURCE_TITLES)
+      .find(([key]) => label.includes(key) || key.includes(label));
+    if (!mapped) continue;
+    mapped[1].forEach((title) => excluded.add(title));
+  }
+
+  return excluded;
+};
+
 const getExternalResourceMetaByTitle = (title: string, index: number) => {
   const isInternalWorkshop = /taller\s+interno/i.test(title);
   if (isInternalWorkshop) {
@@ -202,15 +232,21 @@ const getExternalResourceMetaByTitle = (title: string, index: number) => {
   };
 };
 
-const buildResourceSectionFromAssigned = (assignedResources: string[]): string => {
+const buildResourceSectionFromAssigned = (assignedResources: string[], reportContent: string): string => {
   const normalizedAssigned = assignedResources.filter(Boolean);
-  const source = [...INTERNAL_WORKSHOP_TITLES, ...normalizedAssigned].slice(0, 5);
+  const excludedTitles = parseStrengthResourceExclusions(reportContent);
+  const source = normalizedAssigned
+    .filter((title) => !excludedTitles.has(title))
+    .slice(0, 5);
 
   const resolved = source.length
     ? source.map((title, index) => getExternalResourceMetaByTitle(title, index))
     : EXTERNAL_RESOURCE_FALLBACK;
 
-  return resolved.slice(0, 5).map((item, index) => (
+  const filteredResolved = resolved.filter((item) => !excludedTitles.has(item.title));
+  const finalResolved = filteredResolved.length ? filteredResolved : EXTERNAL_RESOURCE_FALLBACK;
+
+  return finalResolved.slice(0, 5).map((item, index) => (
     (() => {
       const isInternalWorkshop = /taller\s+interno/i.test(item.title || '');
       const resourceValue = isInternalWorkshop ? INTERNAL_WORKSHOP_MESSAGE : item.url;
@@ -226,14 +262,8 @@ const buildResourceSectionFromAssigned = (assignedResources: string[]): string =
 const mergeAssignedResourcesIntoReport = (reportContent: string, assignedResources: string[]): string => {
   if (!reportContent) return reportContent;
   const currentResources = parseRecommendedResourceTitles(reportContent);
-  if (currentResources.length > 0) {
-    // Keep the recommendations generated in the current report.
-    return reportContent;
-  }
-
-  // If report has no recommendations, recover them from assigned resources.
-
-  const replacementBlock = `### Recursos recomendados\n${buildResourceSectionFromAssigned(assignedResources)}`;
+  const sourceResources = currentResources.length > 0 ? currentResources : assignedResources;
+  const replacementBlock = `### Recursos recomendados\n${buildResourceSectionFromAssigned(sourceResources, reportContent)}`;
   const resourcesSectionPattern = /###\s+(Recursos recomendados|Tus 5 recursos de desarrollo|Recursos de desarrollo)[\s\S]*?(?=\n###\s|\n---REPORTE_FIN---|$)/i;
 
   if (resourcesSectionPattern.test(reportContent)) {
