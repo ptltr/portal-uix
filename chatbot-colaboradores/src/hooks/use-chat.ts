@@ -982,6 +982,11 @@ const rebuildAssessmentFlowFromSnapshot = (args: {
   return flow;
 };
 
+const isCompletedAssessmentFlow = (flow: AssessmentFlow | null): boolean => {
+  if (!flow) return false;
+  return flow.competencyOrder.every((key) => Boolean(flow.assessments[key]?.classification));
+};
+
 const detectSelectedOption = (input: string): OptionId | null => {
   const normalized = normalize(input);
   const compact = normalized.replace(/[\s.,;:!?()\-_/]/g, "");
@@ -1320,12 +1325,19 @@ export function useChat() {
   const applyPersistedState = useCallback((parsed: PersistedChatState) => {
     const parsedMessages = normalizeIncomingMessages(parsed.messages);
     const normalizedReport = migrateLegacyReportContent(parsed.finalReport || "");
-    const hasReport = Boolean(normalizedReport.trim());
     const rebuiltFlow = rebuildAssessmentFlowFromSnapshot({
       selectedProfile: parsed.selectedProfile,
       assessmentFlow: parsed.assessmentFlow,
       messages: parsedMessages,
     });
+    const flowIsComplete = isCompletedAssessmentFlow(rebuiltFlow);
+    const regeneratedReport = flowIsComplete
+      ? buildPersonalizedReport({
+          flow: rebuiltFlow!,
+          employeeEmail: parsed.employeeEmail || "",
+        })
+      : normalizedReport;
+    const hasReport = Boolean(regeneratedReport.trim());
     const hasMeaningfulContent = parsedMessages.length > 0 || hasReport || Boolean(rebuiltFlow);
     const hydratedMessages = parsedMessages.length
       ? parsedMessages
@@ -1342,12 +1354,12 @@ export function useChat() {
       : null;
     setConversationId(hydratedConversationId);
     setMessages(hydratedMessages);
-    setIsEvaluationComplete(hasMeaningfulContent && (Boolean(parsed.isEvaluationComplete) || hasReport));
+    setIsEvaluationComplete(hasMeaningfulContent && (Boolean(parsed.isEvaluationComplete) || hasReport || flowIsComplete));
     setEmployeeName(parsed.employeeName || "");
     setEmployeeEmail(parsed.employeeEmail || "");
     setTrainerName(parsed.trainerName || "");
     setCurrentStep(hasMeaningfulContent && typeof parsed.currentStep === "number" ? parsed.currentStep : 0);
-    setFinalReport(normalizedReport);
+    setFinalReport(regeneratedReport);
     setFollowUpCount(hasMeaningfulContent && typeof parsed.followUpCount === "number" ? parsed.followUpCount : 0);
     setIsInFollowUp(hasMeaningfulContent && Boolean(parsed.isInFollowUp));
     setSelectedProfile(parsed.selectedProfile || "");
