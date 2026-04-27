@@ -672,10 +672,10 @@ const EXTERNAL_RESOURCES_BY_COMPETENCY: Record<string, ResourceRecommendation[]>
   ],
   asertividad: [
     {
-      title: "Improving Communication Skills",
+      title: "Negotiation Skills",
       type: "Curso en Coursera · opción gratuita",
-      why: "Te ayuda a comunicar límites y expectativas con mayor claridad y respeto.",
-      url: "https://www.coursera.org/learn/wharton-communication-skills",
+      why: "Te ayuda a expresar límites, expectativas y acuerdos con más claridad y firmeza.",
+      url: "https://www.coursera.org/learn/negotiation-skills",
     },
   ],
   autogestion: [
@@ -734,6 +734,60 @@ const EXTERNAL_RESOURCES_BY_COMPETENCY: Record<string, ResourceRecommendation[]>
       url: "https://www.coursera.org/professional-certificates/google-project-management",
     },
   ],
+  empatia: [
+    {
+      title: "Teamwork Skills: Communicating Effectively in Groups",
+      type: "Curso en Coursera · opción gratuita",
+      why: "Refuerza escucha, coordinación y sensibilidad para colaborar mejor con otras personas.",
+      url: "https://www.coursera.org/learn/teamwork-skills-effective-communication",
+    },
+  ],
+  "solucion-de-problemas": [
+    {
+      title: "Creative Thinking: Techniques and Tools for Success",
+      type: "Curso en Coursera · opción gratuita",
+      why: "Te da métodos prácticos para analizar situaciones complejas y proponer alternativas accionables.",
+      url: "https://www.coursera.org/learn/creative-thinking-techniques-and-tools-for-success",
+    },
+  ],
+  "toma-de-decisiones": [
+    {
+      title: "Google Data Analytics Certificate",
+      type: "Curso de Google en Coursera · opción gratuita",
+      why: "Fortalece criterio para decidir con información y evidencia, no solo intuición.",
+      url: "https://www.coursera.org/professional-certificates/google-data-analytics",
+    },
+  ],
+  "orientacion-al-servicio": [
+    {
+      title: "Teamwork Skills: Communicating Effectively in Groups",
+      type: "Curso en Coursera · opción gratuita",
+      why: "Mejora comunicación con personas usuarias y colaboración para resolver necesidades con más claridad.",
+      url: "https://www.coursera.org/learn/teamwork-skills-effective-communication",
+    },
+  ],
+  "mentalidad-de-negocio": [
+    {
+      title: "Introduction to Management Analysis and Strategies",
+      type: "Alison · curso gratuito",
+      why: "Refuerza pensamiento estratégico para conectar decisiones diarias con impacto de negocio.",
+      url: "https://alison.com/course/introduction-to-management-analysis-and-strategies",
+    },
+  ],
+};
+
+const STRENGTH_RESOURCE_TITLE_EXCLUSIONS: Record<string, string[]> = {
+  "comunicacion-efectiva": [
+    "Improving Communication Skills",
+    "How to speak so that people want to listen",
+  ],
+  asertividad: ["Negotiation Skills"],
+  autogestion: ["Work Smarter, Not Harder: Time Management"],
+  "trabajo-en-equipo": ["Teamwork Skills: Communicating Effectively in Groups"],
+  negociacion: ["Negotiation Skills"],
+  proactividad: ["Creative Thinking: Techniques and Tools for Success"],
+  "aprendizaje-continuo": ["Google Project Management Certificate"],
+  "mentalidad-de-negocio": ["Introduction to Management Analysis and Strategies"],
 };
 
 const FALLBACK_EXTERNAL_RESOURCES: ResourceRecommendation[] = [
@@ -774,12 +828,15 @@ const buildResourceBlock = (resources: ResourceRecommendation[]): string => {
   )).join("\n\n");
 };
 
-const buildRecommendedResources = (opportunityKeys: string[]): ResourceRecommendation[] => {
+const buildRecommendedResources = (opportunityKeys: string[], strengthKeys: string[] = []): ResourceRecommendation[] => {
   const chosen: ResourceRecommendation[] = [];
   const seen = new Set<string>();
+  const excludedTitles = new Set<string>(
+    strengthKeys.flatMap((key) => STRENGTH_RESOURCE_TITLE_EXCLUSIONS[key] || [])
+  );
 
   const add = (resource?: ResourceRecommendation) => {
-    if (!resource || seen.has(resource.title)) return;
+    if (!resource || seen.has(resource.title) || excludedTitles.has(resource.title)) return;
     seen.add(resource.title);
     chosen.push(resource);
   };
@@ -791,6 +848,15 @@ const buildRecommendedResources = (opportunityKeys: string[]): ResourceRecommend
     const candidates = EXTERNAL_RESOURCES_BY_COMPETENCY[key] || [];
     candidates.forEach((resource) => add(resource));
     if (chosen.length >= 5) break;
+  }
+
+  if (chosen.length < 5) {
+    for (const key of Object.keys(EXTERNAL_RESOURCES_BY_COMPETENCY)) {
+      if (opportunityKeys.includes(key) || strengthKeys.includes(key)) continue;
+      const candidates = EXTERNAL_RESOURCES_BY_COMPETENCY[key] || [];
+      candidates.forEach((resource) => add(resource));
+      if (chosen.length >= 5) break;
+    }
   }
 
   for (const fallback of FALLBACK_EXTERNAL_RESOURCES) {
@@ -1113,7 +1179,10 @@ const buildPersonalizedReport = (args: {
     return `- **${action.title}**: ${action.description}`;
   }).join("\n");
 
-  const resourceRecommendations = buildRecommendedResources(resolvedOpportunities.map((entry) => entry.competencyKey));
+  const resourceRecommendations = buildRecommendedResources(
+    resolvedOpportunities.map((entry) => entry.competencyKey),
+    resolvedStrengths.map((entry) => entry.competencyKey),
+  );
   const resourceLines = buildResourceBlock(resourceRecommendations);
 
   const followUpEmailLine = args.employeeEmail
