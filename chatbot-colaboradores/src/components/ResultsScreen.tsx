@@ -261,15 +261,24 @@ const buildResourceSectionFromAssigned = (assignedResources: string[], reportCon
 
 const mergeAssignedResourcesIntoReport = (reportContent: string, assignedResources: string[]): string => {
   if (!reportContent) return reportContent;
-  const currentResources = parseRecommendedResourceTitles(reportContent);
-  const sourceResources = currentResources.length > 0 ? currentResources : assignedResources;
-  const replacementBlock = `### Recursos recomendados\n${buildResourceSectionFromAssigned(sourceResources, reportContent)}`;
   const resourcesSectionPattern = /###\s+(Recursos recomendados|Tus 5 recursos de desarrollo|Recursos de desarrollo)[\s\S]*?(?=\n###\s|\n---REPORTE_FIN---|$)/i;
+  const currentResources = parseRecommendedResourceTitles(reportContent);
 
+  if (currentResources.length > 0) {
+    // Report already has its own resources — only filter strength-linked ones, do NOT mix in assignedResources from another email
+    const replacementBlock = `### Recursos recomendados\n${buildResourceSectionFromAssigned(currentResources, reportContent)}`;
+    if (resourcesSectionPattern.test(reportContent)) {
+      return reportContent.replace(resourcesSectionPattern, replacementBlock);
+    }
+    return `${reportContent}\n\n${replacementBlock}`;
+  }
+
+  // Report has no resources yet — inject from assignedResources (progress record)
+  if (assignedResources.length === 0) return reportContent;
+  const replacementBlock = `### Recursos recomendados\n${buildResourceSectionFromAssigned(assignedResources, reportContent)}`;
   if (resourcesSectionPattern.test(reportContent)) {
     return reportContent.replace(resourcesSectionPattern, replacementBlock);
   }
-
   return `${reportContent}\n\n${replacementBlock}`;
 };
 
