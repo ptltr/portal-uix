@@ -81,8 +81,13 @@ const parseJsonIfString = (value: unknown): unknown => {
 };
 
 const sessionHasMeaningfulContent = (snapshot: PersistedChatState): boolean => {
-  // Only treat persisted history as resumable when it has actual conversation content.
-  return (snapshot.messages || []).length > 0 || Boolean(snapshot.finalReport);
+  // Treat partial guided snapshots as resumable even if report/messages are sparse.
+  const hasMessages = (snapshot.messages || []).length > 0;
+  const hasReport = Boolean(snapshot.finalReport);
+  const hasFlow = Boolean(snapshot.assessmentFlow && typeof snapshot.assessmentFlow === "object");
+  const hasProfile = Boolean(String(snapshot.selectedProfile || "").trim());
+  const hasConversationId = typeof snapshot.conversationId === "number";
+  return hasMessages || hasReport || hasFlow || (hasProfile && hasConversationId);
 };
 
 const parseSessionSnapshot = (value: unknown): PersistedChatState | null => {
@@ -119,7 +124,7 @@ const parseSessionSnapshot = (value: unknown): PersistedChatState | null => {
           const role = roleRaw === "user" || roleRaw === "assistant" || roleRaw === "system"
             ? roleRaw
             : "assistant";
-          const content = String(msg.content || "").trim();
+          const content = String(msg.content || msg.message || msg.text || msg.body || "").trim();
           if (!content) return null;
           return {
             id: String(msg.id || `restored-${Date.now()}-${index}`),

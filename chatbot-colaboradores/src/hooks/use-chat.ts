@@ -897,7 +897,7 @@ const rebuildAssessmentFlowFromSnapshot = (args: {
     return args.assessmentFlow;
   }
 
-  const profile = String(args.selectedProfile || "").trim();
+  const profile = String(args.selectedProfile || "").trim() || "UX/UI Designer";
   if (!profile) return null;
 
   let flow = createAssessmentFlow(profile);
@@ -1252,7 +1252,12 @@ export function useChat() {
     const parsedMessages = normalizeIncomingMessages(parsed.messages);
     const normalizedReport = migrateLegacyReportContent(parsed.finalReport || "");
     const hasReport = Boolean(normalizedReport.trim());
-    const hasMeaningfulContent = parsedMessages.length > 0 || hasReport;
+    const rebuiltFlow = rebuildAssessmentFlowFromSnapshot({
+      selectedProfile: parsed.selectedProfile,
+      assessmentFlow: parsed.assessmentFlow,
+      messages: parsedMessages,
+    });
+    const hasMeaningfulContent = parsedMessages.length > 0 || hasReport || Boolean(rebuiltFlow);
     const hydratedMessages = parsedMessages.length
       ? parsedMessages
       : hasReport
@@ -1263,7 +1268,10 @@ export function useChat() {
           }]
         : [];
 
-    setConversationId(hasMeaningfulContent && typeof parsed.conversationId === "number" ? parsed.conversationId : null);
+    const hydratedConversationId = hasMeaningfulContent
+      ? (typeof parsed.conversationId === "number" ? parsed.conversationId : Date.now())
+      : null;
+    setConversationId(hydratedConversationId);
     setMessages(hydratedMessages);
     setIsEvaluationComplete(hasMeaningfulContent && (Boolean(parsed.isEvaluationComplete) || hasReport));
     setEmployeeName(parsed.employeeName || "");
@@ -1274,11 +1282,7 @@ export function useChat() {
     setFollowUpCount(hasMeaningfulContent && typeof parsed.followUpCount === "number" ? parsed.followUpCount : 0);
     setIsInFollowUp(hasMeaningfulContent && Boolean(parsed.isInFollowUp));
     setSelectedProfile(parsed.selectedProfile || "");
-    setAssessmentFlow(rebuildAssessmentFlowFromSnapshot({
-      selectedProfile: parsed.selectedProfile,
-      assessmentFlow: parsed.assessmentFlow,
-      messages: parsedMessages,
-    }));
+    setAssessmentFlow(rebuiltFlow);
 
     if (parsed.signals?.strengths && parsed.signals?.opportunities) {
       signalsRef.current = {
@@ -1328,7 +1332,8 @@ export function useChat() {
         messages: parsedMessages,
       })
     );
-    return hasReport || (hasAnyMessageContent && hasCompatibleFlow);
+    const hasConversationMeta = typeof snapshot.conversationId === "number" && Boolean(String(snapshot.selectedProfile || "").trim());
+    return hasReport || hasCompatibleFlow || hasAnyMessageContent || hasConversationMeta;
   }, []);
 
   const getSnapshotResumeRank = useCallback((snapshot: PersistedChatState | null | undefined) => {
