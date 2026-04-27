@@ -83,6 +83,21 @@ const PDF_FALLBACK_RECOMMENDATIONS: Recommendation[] = [
 
 const INTERNAL_WORKSHOP_URL = "https://ptltr.github.io/portal-uix/#talleres-uix";
 
+const PDF_INTERNAL_WORKSHOP_RECOMMENDATIONS: Recommendation[] = [
+  {
+    name: "Taller interno UIX: Comunicación efectiva y conversaciones difíciles",
+    type: "Taller UIX · interno",
+    why: "Te ayuda a estructurar conversaciones difíciles con claridad, empatía y acuerdos concretos.",
+    url: INTERNAL_WORKSHOP_URL,
+  },
+  {
+    name: "Taller interno UIX: Priorización y gestión del tiempo",
+    type: "Taller UIX · interno",
+    why: "Refuerza priorización, foco y seguimiento para sostener avances en semanas de alta carga.",
+    url: INTERNAL_WORKSHOP_URL,
+  },
+];
+
 const normalizeTitle = (value: string): string => {
   return value
     .normalize("NFD")
@@ -204,6 +219,15 @@ function sanitizeRecommendations(items: Recommendation[]): Recommendation[] {
     }
 
     if (hasExternalUrl) {
+      // Keep direct links and normalize known resources to canonical URLs.
+      if (mapped) {
+        return {
+          name: item.name || mapped.name,
+          type: item.type || mapped.type,
+          why: item.why || mapped.why,
+          url: mapped.url,
+        };
+      }
       return item;
     }
 
@@ -236,6 +260,8 @@ function ensureFiveRecommendations(items: Recommendation[]): Recommendation[] {
     merged.push(item);
   };
 
+  // Always include internal workshops in final PDF recommendations.
+  for (const item of PDF_INTERNAL_WORKSHOP_RECOMMENDATIONS) add(item);
   for (const item of items) add(item);
   for (const item of PDF_FALLBACK_RECOMMENDATIONS) {
     if (merged.length >= 5) break;
