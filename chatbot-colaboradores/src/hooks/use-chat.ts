@@ -1584,9 +1584,15 @@ export function useChat() {
     }
   }, [isResumeUsableSnapshot]);
 
-  const forceResumeLatestLocalSession = useCallback((): boolean => {
+  const forceResumeLatestLocalSession = useCallback((emailFilter?: string): boolean => {
     const snapshot = readLatestLocalSnapshot();
     if (!snapshot) return false;
+    // If an email filter is provided, only resume if the snapshot belongs to that email.
+    if (emailFilter) {
+      const snapshotEmail = String(snapshot.employeeEmail || "").trim().toLowerCase();
+      const targetEmail = emailFilter.trim().toLowerCase();
+      if (snapshotEmail !== targetEmail) return false;
+    }
     applyPersistedState({ ...snapshot, updatedAt: Date.now() });
     return true;
   }, [applyPersistedState, readLatestLocalSnapshot]);

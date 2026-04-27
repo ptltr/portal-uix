@@ -169,7 +169,8 @@ export default function Home() {
       }
 
       if (!restored) {
-        const recoveredFromLocal = forceResumeLatestLocalSession();
+        // Only fall back to latest local session if it belongs to the same email.
+        const recoveredFromLocal = forceResumeLatestLocalSession(resolvedEmail);
         if (recoveredFromLocal) {
           setPhase('chat');
           return true;
