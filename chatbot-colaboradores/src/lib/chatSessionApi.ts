@@ -133,7 +133,7 @@ const parseSessionSnapshot = (value: unknown): PersistedChatState | null => {
     ? raw.finalReport
     : (typeof raw.report === "string" ? raw.report : "");
 
-  const rawAssessmentFlow = raw.assessmentFlow;
+  const rawAssessmentFlow = parseJsonIfString(raw.assessmentFlow);
   const hasAssessmentFlow = Boolean(
     rawAssessmentFlow
     && typeof rawAssessmentFlow === "object"
@@ -156,7 +156,9 @@ const parseSessionSnapshot = (value: unknown): PersistedChatState | null => {
       ? (raw.signals as PersistedChatState["signals"])
       : { strengths: {}, opportunities: {} },
     updatedAt: typeof raw.updatedAt === "number" ? raw.updatedAt : Date.now(),
-    selectedProfile: typeof raw.selectedProfile === "string" ? raw.selectedProfile : "",
+    selectedProfile: typeof raw.selectedProfile === "string"
+      ? raw.selectedProfile
+      : (typeof raw.profile === "string" ? raw.profile : ""),
     assessmentFlow: hasAssessmentFlow
       ? (rawAssessmentFlow as PersistedChatState["assessmentFlow"])
       : null,

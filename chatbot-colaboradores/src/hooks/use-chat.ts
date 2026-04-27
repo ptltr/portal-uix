@@ -84,6 +84,7 @@ export interface PersistedChatState {
 
 type PartialPersistedChatState = Partial<PersistedChatState> & {
   report?: string;
+  profile?: string;
 };
 
 const CHAT_STORAGE_KEY = "uix-chat-session-v1";
@@ -887,6 +888,34 @@ const getCurrentQuestion = (flow: AssessmentFlow | null): QuestionDefinition | n
   return flow.pendingQuestion === "q2" ? competency.questions.q2 : competency.questions.q1;
 };
 
+const rebuildAssessmentFlowFromSnapshot = (args: {
+  selectedProfile?: string;
+  assessmentFlow?: AssessmentFlow | null;
+  messages?: ChatMessage[];
+}): AssessmentFlow | null => {
+  if (isValidAssessmentFlow(args.assessmentFlow)) {
+    return args.assessmentFlow;
+  }
+
+  const profile = String(args.selectedProfile || "").trim();
+  if (!profile) return null;
+
+  let flow = createAssessmentFlow(profile);
+  const orderedMessages = normalizeIncomingMessages(args.messages || []);
+  const userMessages = orderedMessages.filter((msg) => msg.role === "user");
+
+  for (const message of userMessages) {
+    const selectedOption = detectSelectedOption(message.content || "");
+    if (!selectedOption) continue;
+
+    const advanced = advanceAssessmentFlow(flow, selectedOption);
+    flow = advanced.flow;
+    if (advanced.isComplete) break;
+  }
+
+  return flow;
+};
+
 const detectSelectedOption = (input: string): OptionId | null => {
   const normalized = normalize(input);
   const compact = normalized.replace(/[\s.,;:!?()\-_/]/g, "");
@@ -1245,7 +1274,11 @@ export function useChat() {
     setFollowUpCount(hasMeaningfulContent && typeof parsed.followUpCount === "number" ? parsed.followUpCount : 0);
     setIsInFollowUp(hasMeaningfulContent && Boolean(parsed.isInFollowUp));
     setSelectedProfile(parsed.selectedProfile || "");
-    setAssessmentFlow(isValidAssessmentFlow(parsed.assessmentFlow) ? parsed.assessmentFlow : null);
+    setAssessmentFlow(rebuildAssessmentFlowFromSnapshot({
+      selectedProfile: parsed.selectedProfile,
+      assessmentFlow: parsed.assessmentFlow,
+      messages: parsedMessages,
+    }));
 
     if (parsed.signals?.strengths && parsed.signals?.opportunities) {
       signalsRef.current = {
@@ -1288,7 +1321,13 @@ export function useChat() {
     const parsedMessages = normalizeIncomingMessages(snapshot.messages);
     const hasAnyMessageContent = parsedMessages.some((msg) => String(msg?.content || "").trim().length > 0);
     const hasReport = Boolean(String(snapshot.finalReport || "").trim());
-    const hasCompatibleFlow = Boolean(snapshot.assessmentFlow && isValidAssessmentFlow(snapshot.assessmentFlow));
+    const hasCompatibleFlow = Boolean(
+      rebuildAssessmentFlowFromSnapshot({
+        selectedProfile: snapshot.selectedProfile,
+        assessmentFlow: snapshot.assessmentFlow,
+        messages: parsedMessages,
+      })
+    );
     return hasReport || (hasAnyMessageContent && hasCompatibleFlow);
   }, []);
 
@@ -1340,7 +1379,7 @@ export function useChat() {
         isInFollowUp: Boolean(parsed.isInFollowUp),
         signals: parsed.signals?.strengths && parsed.signals?.opportunities ? parsed.signals : { strengths: {}, opportunities: {} },
         updatedAt: typeof parsed.updatedAt === "number" ? parsed.updatedAt : Date.now(),
-        selectedProfile: String(parsed.selectedProfile || ""),
+        selectedProfile: String(parsed.selectedProfile || parsed.profile || ""),
         assessmentFlow: isValidAssessmentFlow(parsed.assessmentFlow) ? parsed.assessmentFlow : null,
       };
     } catch {
@@ -1372,7 +1411,7 @@ export function useChat() {
         isInFollowUp: Boolean(parsed.isInFollowUp),
         signals: parsed.signals?.strengths && parsed.signals?.opportunities ? parsed.signals : { strengths: {}, opportunities: {} },
         updatedAt: typeof parsed.updatedAt === "number" ? parsed.updatedAt : Date.now(),
-        selectedProfile: String(parsed.selectedProfile || ""),
+        selectedProfile: String(parsed.selectedProfile || parsed.profile || ""),
         assessmentFlow: isValidAssessmentFlow(parsed.assessmentFlow) ? parsed.assessmentFlow : null,
       };
 
