@@ -90,6 +90,12 @@ const sessionHasMeaningfulContent = (snapshot: PersistedChatState): boolean => {
   return hasMessages || hasReport || hasFlow || (hasProfile && hasConversationId);
 };
 
+const snapshotBelongsToEmail = (snapshot: PersistedChatState, requestedEmail: string): boolean => {
+  const normalizedRequested = normalizeEmail(requestedEmail);
+  const normalizedSnapshotEmail = normalizeEmail(String(snapshot.employeeEmail || ""));
+  return Boolean(normalizedRequested) && normalizedSnapshotEmail === normalizedRequested;
+};
+
 const parseSessionSnapshot = (value: unknown): PersistedChatState | null => {
   const normalizedValue = parseJsonIfString(value);
   if (!normalizedValue || typeof normalizedValue !== "object") return null;
@@ -243,7 +249,8 @@ const fetchSessionSnapshotFromAppsScript = async (baseUrl: string, email: string
     // Apps Script can return 200 with { ok:false, ... } for not-found/error cases.
     if (body && typeof body === "object" && body.ok === false) return null;
     const parsed = parseSessionSnapshot(body);
-    return parsed && sessionHasMeaningfulContent(parsed) ? parsed : null;
+    if (!parsed || !sessionHasMeaningfulContent(parsed)) return null;
+    return snapshotBelongsToEmail(parsed, email) ? parsed : null;
   } catch {
     return null;
   }
@@ -254,7 +261,8 @@ const fetchSessionSnapshotFromRest = async (baseUrl: string, email: string): Pro
     const response = await fetch(`${baseUrl}/api/chat-sessions/${encodeURIComponent(email)}`);
     if (response.status === 404 || !response.ok) return null;
     const parsed = parseSessionSnapshot(await response.json());
-    return parsed && sessionHasMeaningfulContent(parsed) ? parsed : null;
+    if (!parsed || !sessionHasMeaningfulContent(parsed)) return null;
+    return snapshotBelongsToEmail(parsed, email) ? parsed : null;
   } catch {
     return null;
   }
