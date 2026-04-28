@@ -17,22 +17,20 @@ function handleRequest_(e, method) {
       return json_({ status: "ok" });
     }
 
-    if (method === "POST") {
-      var payloadText = (e && e.parameter && e.parameter.payload) ? e.parameter.payload : "{}";
-      var payload = JSON.parse(payloadText || "{}");
+    var payloadText = (e && e.parameter && e.parameter.payload) ? e.parameter.payload : "{}";
+    var payload = JSON.parse(payloadText || "{}");
 
-      if (action === "upsertChatSession") {
-        return upsertChatSession_(payload);
-      }
-      if (action === "syncCollaboratorAssessment") {
-        return syncCollaboratorAssessment_(payload);
-      }
-      if (action === "uploadDeliverable") {
-        return uploadDeliverable_(payload);
-      }
-      if (action === "sendProgressReminder") {
-        return sendProgressReminder_(payload);
-      }
+    if (action === "upsertChatSession") {
+      return upsertChatSession_(payload);
+    }
+    if (action === "syncCollaboratorAssessment") {
+      return syncCollaboratorAssessment_(payload);
+    }
+    if (action === "uploadDeliverable") {
+      return uploadDeliverable_(payload);
+    }
+    if (action === "sendProgressReminder") {
+      return sendProgressReminder_(payload);
     }
 
     if (action === "getChatSession") {

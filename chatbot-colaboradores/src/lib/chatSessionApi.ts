@@ -18,11 +18,11 @@ const buildAppsScriptUrl = (baseUrl: string, action: string, params?: Record<str
 };
 
 const callAppsScriptPost = async <T>(baseUrl: string, action: string, payload: unknown): Promise<T> => {
-  const body = new URLSearchParams();
-  body.set("action", action);
-  body.set("payload", JSON.stringify(payload));
+  const url = new URL(baseUrl);
+  url.searchParams.set("action", action);
+  url.searchParams.set("payload", JSON.stringify(payload));
 
-  const response = await fetch(baseUrl, { method: "POST", body });
+  const response = await fetch(url.toString());
   if (!response.ok) {
     throw new Error(`Apps Script request failed: ${response.status}`);
   }
