@@ -116,6 +116,19 @@ const normalizeEmail = (value: string): string => value.trim().toLowerCase();
 
 const isValidEmail = (value: string): boolean => /\S+@\S+\.\S+/.test(value.trim());
 
+const shrinkSnapshotForAppsScript = (snapshot: PersistedChatState): PersistedChatState => {
+  const trimmedMessages = (snapshot.messages || []).slice(-18).map((message) => ({
+    ...message,
+    text: typeof message.text === "string" ? message.text.slice(0, 360) : message.text,
+  }));
+
+  return {
+    ...snapshot,
+    messages: trimmedMessages,
+    finalReport: String(snapshot.finalReport || "").slice(0, 20_000),
+  };
+};
+
 const parseJsonIfString = (value: unknown): unknown => {
   if (typeof value !== "string") return value;
   const trimmed = value.trim();
@@ -425,12 +438,33 @@ export const saveSessionByEmail = async (email: string, snapshot: PersistedChatS
     });
   };
 
+  const saveWithAppsScriptGetFallback = async (): Promise<void> => {
+    const reduced = shrinkSnapshotForAppsScript(payload);
+    const response = await fetch(
+      buildAppsScriptUrl(baseUrl, "upsertChatSession", {
+        payload: JSON.stringify({
+          email: normalized,
+          snapshot: reduced,
+        }),
+      }),
+    );
+
+    if (!response.ok) {
+      throw new Error(`Apps Script GET fallback failed: ${response.status}`);
+    }
+  };
+
   if (isAppsScriptEndpoint(baseUrl)) {
     try {
       await saveWithAppsScript();
       return;
     } catch {
-      await saveWithRest();
+      try {
+        await saveWithAppsScriptGetFallback();
+        return;
+      } catch {
+        await saveWithRest();
+      }
       return;
     }
   }
