@@ -17,11 +17,17 @@ const buildAppsScriptUrl = (baseUrl: string, action: string, params?: Record<str
   return url.toString();
 };
 
-const appsScriptRuntimeUrlCache = new Map<string, string>();
+type AppsScriptRuntimeCacheEntry = {
+  url: string;
+  expiresAt: number;
+};
 
-const resolveAppsScriptRuntimeUrl = async (baseUrl: string): Promise<string> => {
+const APPS_SCRIPT_RUNTIME_URL_TTL_MS = 60_000;
+const appsScriptRuntimeUrlCache = new Map<string, AppsScriptRuntimeCacheEntry>();
+
+const resolveAppsScriptRuntimeUrl = async (baseUrl: string, forceRefresh = false): Promise<string> => {
   const cached = appsScriptRuntimeUrlCache.get(baseUrl);
-  if (cached) return cached;
+  if (!forceRefresh && cached && cached.expiresAt > Date.now()) return cached.url;
 
   const probeUrl = new URL(baseUrl);
   probeUrl.searchParams.set("action", "health");
@@ -36,7 +42,10 @@ const resolveAppsScriptRuntimeUrl = async (baseUrl: string): Promise<string> => 
   resolvedUrl.searchParams.delete("payload");
   resolvedUrl.searchParams.delete("email");
   const resolved = resolvedUrl.toString();
-  appsScriptRuntimeUrlCache.set(baseUrl, resolved);
+  appsScriptRuntimeUrlCache.set(baseUrl, {
+    url: resolved,
+    expiresAt: Date.now() + APPS_SCRIPT_RUNTIME_URL_TTL_MS,
+  });
   return resolved;
 };
 
@@ -45,15 +54,25 @@ const callAppsScriptPost = async <T>(baseUrl: string, action: string, payload: u
   body.set("action", action);
   body.set("payload", JSON.stringify(payload));
 
-  const runtimeUrl = await resolveAppsScriptRuntimeUrl(baseUrl);
-  let response = await fetch(runtimeUrl, { method: "POST", body });
+  const postToRuntime = async (forceRefresh = false): Promise<Response> => {
+    const runtimeUrl = await resolveAppsScriptRuntimeUrl(baseUrl, forceRefresh);
+    return fetch(runtimeUrl, { method: "POST", body });
+  };
 
-  if (!response.ok) {
-    response = await fetch(baseUrl, { method: "POST", body });
+  let response = await postToRuntime(false);
+  const contentType = response.headers.get("content-type") || "";
+  const hasJsonResponse = contentType.includes("application/json");
+  if (!response.ok || !hasJsonResponse) {
+    response = await postToRuntime(true);
   }
 
   if (!response.ok) {
     throw new Error(`Apps Script request failed: ${response.status}`);
+  }
+
+  const finalContentType = response.headers.get("content-type") || "";
+  if (!finalContentType.includes("application/json")) {
+    throw new Error("Apps Script request failed: non-JSON response");
   }
 
   return (await response.json()) as T;
