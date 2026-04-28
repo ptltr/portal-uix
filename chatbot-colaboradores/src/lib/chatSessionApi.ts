@@ -93,10 +93,16 @@ const sessionHasMeaningfulContent = (snapshot: PersistedChatState): boolean => {
 const extractFollowUpEmailFromReport = (report: string): string => {
   const content = String(report || "");
   if (!content) return "";
-  const match = content.match(/Correo\s+de\s+seguimiento\s*:\s*([^\n]+)/i);
-  if (!match || !match[1]) return "";
-  const candidate = String(match[1]).trim().split(/\s+/)[0] || "";
-  return normalizeEmail(candidate);
+
+  // Capture the line even if it contains markdown wrappers like **Correo de seguimiento:**
+  const lineMatch = content.match(/Correo\s+de\s+seguimiento[^\n]*/i);
+  const line = lineMatch ? String(lineMatch[0]) : "";
+
+  // Extract a real email token from the line; avoid taking markdown symbols as value.
+  const emailMatch = line.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i);
+  if (!emailMatch || !emailMatch[0]) return "";
+
+  return normalizeEmail(emailMatch[0]);
 };
 
 const snapshotBelongsToEmail = (snapshot: PersistedChatState, requestedEmail: string): boolean => {
