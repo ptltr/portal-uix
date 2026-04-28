@@ -1029,7 +1029,7 @@ const rebuildAssessmentFlowFromSnapshot = (args: {
     return args.assessmentFlow;
   }
 
-  const profile = String(args.selectedProfile || "").trim() || "UX/UI Designer";
+  const profile = String(args.selectedProfile || "").trim();
   if (!profile) return null;
 
   let flow = createAssessmentFlow(profile);
@@ -1393,13 +1393,15 @@ export function useChat() {
   const applyPersistedState = useCallback((parsed: PersistedChatState) => {
     const parsedMessages = normalizeIncomingMessages(parsed.messages);
     const normalizedReport = migrateLegacyReportContent(parsed.finalReport || "");
+    const hasStoredReport = Boolean(normalizedReport.trim());
     const rebuiltFlow = rebuildAssessmentFlowFromSnapshot({
       selectedProfile: parsed.selectedProfile,
       assessmentFlow: parsed.assessmentFlow,
       messages: parsedMessages,
     });
     const flowIsComplete = isCompletedAssessmentFlow(rebuiltFlow);
-    const regeneratedReport = flowIsComplete
+    // Only regenerate from flow when there is no stored report.
+    const regeneratedReport = !hasStoredReport && flowIsComplete
       ? buildPersonalizedReport({
           flow: rebuiltFlow!,
           employeeEmail: parsed.employeeEmail || "",
@@ -1888,7 +1890,7 @@ export function useChat() {
     if (selected && isResumeUsableSnapshot(selected)) {
       applyPersistedState({
         ...selected,
-        employeeEmail: normalizedEmail,
+        employeeEmail: String(selected.employeeEmail || normalizedEmail).trim().toLowerCase(),
         employeeName: selected.employeeName || employeeName,
         updatedAt: Date.now(),
       });

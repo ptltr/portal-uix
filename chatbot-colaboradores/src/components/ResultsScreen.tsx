@@ -244,7 +244,18 @@ const buildResourceSectionFromAssigned = (assignedResources: string[], reportCon
     : EXTERNAL_RESOURCE_FALLBACK;
 
   const filteredResolved = resolved.filter((item) => !excludedTitles.has(item.title));
-  const finalResolved = filteredResolved.length ? filteredResolved : EXTERNAL_RESOURCE_FALLBACK;
+  const nonInternalResources = filteredResolved.filter((item) => !/taller\s+interno/i.test(item.title || ''));
+  const internalResources = filteredResolved.filter((item) => /taller\s+interno/i.test(item.title || ''));
+
+  // Keep some internal workshops, but avoid filling the whole block with them.
+  let finalResolved = [...nonInternalResources, ...internalResources.slice(0, 2)].slice(0, 5);
+
+  if (finalResolved.length < 5) {
+    const fallbackExtras = EXTERNAL_RESOURCE_FALLBACK.filter((item) => (
+      !finalResolved.some((current) => normalizeTitle(current.title) === normalizeTitle(item.title))
+    ));
+    finalResolved = [...finalResolved, ...fallbackExtras].slice(0, 5);
+  }
 
   return finalResolved.slice(0, 5).map((item, index) => (
     (() => {
