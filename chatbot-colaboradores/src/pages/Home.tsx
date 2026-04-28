@@ -163,7 +163,7 @@ export default function Home() {
 
       let restored = false;
       if (resolvedEmail) {
-        restored = await loadSessionForEmail(resolvedEmail);
+        restored = await loadSessionForEmail(resolvedEmail, resolvedName);
       }
 
       if (!restored) {

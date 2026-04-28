@@ -622,6 +622,28 @@ const migrateLegacyReportContent = (report: string): string => report || "";
 
 const normalizeEmail = (value: string): string => value.trim().toLowerCase();
 
+const normalizePersonName = (value: string): string => (
+  String(value || "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+);
+
+const namesLikelyReferToSamePerson = (expected: string, actual: string): boolean => {
+  const normalizedExpected = normalizePersonName(expected);
+  const normalizedActual = normalizePersonName(actual);
+  if (!normalizedExpected || !normalizedActual) return true;
+
+  const expectedTokens = normalizedExpected.split(" ").filter((token) => token.length >= 3);
+  const actualTokens = normalizedActual.split(" ").filter((token) => token.length >= 3);
+  if (!expectedTokens.length || !actualTokens.length) return true;
+
+  return expectedTokens.some((token) => actualTokens.some((candidate) => token === candidate || token.includes(candidate) || candidate.includes(token)));
+};
+
 const normalize = (value: string): string =>
   value
     .toLowerCase()
@@ -1821,7 +1843,7 @@ export function useChat() {
     }
   }, [hasLocalSessionForEmail]);
 
-  const loadSessionForEmail = useCallback(async (email: string): Promise<boolean> => {
+  const loadSessionForEmail = useCallback(async (email: string, expectedName?: string): Promise<boolean> => {
     const normalizedEmail = normalizeEmail(email);
 
     // Always clear any previously hydrated state (e.g. from another email in localStorage)
@@ -1873,8 +1895,20 @@ export function useChat() {
       && selectedReportResourceKeys.size > 0
       && resourceOverlapCount === 0
     );
+    const selectedNameMismatch = Boolean(
+      selected
+      && String(expectedName || "").trim()
+      && String(selected.employeeName || "").trim()
+      && !namesLikelyReferToSamePerson(String(expectedName), String(selected.employeeName))
+    );
+    const progressNameMismatch = Boolean(
+      progressResult
+      && String(expectedName || "").trim()
+      && String(progressResult.collaboratorName || "").trim()
+      && !namesLikelyReferToSamePerson(String(expectedName), String(progressResult.collaboratorName))
+    );
 
-    if (hasRecoverableProgress && (!selected || !selectedIsComplete || snapshotLikelyContaminated)) {
+    if (!progressNameMismatch && hasRecoverableProgress && (!selected || !selectedIsComplete || snapshotLikelyContaminated || selectedNameMismatch)) {
       const progress = progressResult!;
       const report = buildRecoveredReportFromProgress({
         email: normalizedEmail,
@@ -1912,6 +1946,9 @@ export function useChat() {
     }
 
     if (selected && isResumeUsableSnapshot(selected)) {
+      if (selectedNameMismatch) {
+        return false;
+      }
       applyPersistedState({
         ...selected,
         employeeEmail: String(selected.employeeEmail || normalizedEmail).trim().toLowerCase(),
