@@ -918,6 +918,14 @@ const parseCompetencyKeysFromSection = (sectionContent: string): string[] => {
   const keys = new Set<string>();
   const labels = Object.values(COMPETENCIES).map((item) => ({ key: item.key, normalizedLabel: normalize(item.label) }));
   const matches = [...sectionContent.matchAll(/\*\*([^*]+)\*\*/g)].map((match) => String(match[1] || "").trim());
+  const normalizedSection = normalize(sectionContent);
+
+  const containsNormalizedLabel = (label: string): boolean => {
+    if (!label) return false;
+    const escapedLabel = label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const pattern = new RegExp(`(^|\\W)${escapedLabel}(\\W|$)`, "i");
+    return pattern.test(normalizedSection);
+  };
 
   for (const label of matches) {
     const normalizedLabel = normalize(label);
@@ -928,6 +936,13 @@ const parseCompetencyKeysFromSection = (sectionContent: string): string[] => {
       || item.normalizedLabel.includes(normalizedLabel));
 
     if (resolved) keys.add(resolved.key);
+  }
+
+  // Some report variants list competencies without markdown bold formatting.
+  for (const item of labels) {
+    if (containsNormalizedLabel(item.normalizedLabel)) {
+      keys.add(item.key);
+    }
   }
 
   return [...keys];
