@@ -506,6 +506,11 @@ const normalizeProgressRecord = (value: unknown): CollaboratorProgress | null =>
   };
 };
 
+const progressBelongsToEmail = (record: CollaboratorProgress | null, requestedEmail: string): boolean => {
+  if (!record) return false;
+  return normalizeEmail(record.collaboratorEmail || "") === normalizeEmail(requestedEmail);
+};
+
 const buildProgressMap = (records: CollaboratorProgress[]): Record<string, CollaboratorProgress> => {
   const map: Record<string, CollaboratorProgress> = {};
   for (const record of records) {
@@ -724,13 +729,15 @@ export const getCollaboratorProgress = async (collaboratorEmail: string): Promis
   const email = normalizeEmail(collaboratorEmail);
   const baseUrl = getApiBaseUrl();
   const localMap = getLocalProgressMap();
-  const localRecord = normalizeProgressRecord(localMap[email]);
+  const normalizedLocal = normalizeProgressRecord(localMap[email]);
+  const localRecord = progressBelongsToEmail(normalizedLocal, email) ? normalizedLocal : null;
 
   if (baseUrl) {
     try {
       if (isAppsScriptEndpoint(baseUrl)) {
         const remote = await callAppsScriptGet<CollaboratorProgress>(baseUrl, "getCollaboratorProgress", { email });
-        const remoteRecord = normalizeProgressRecord(remote);
+        const normalizedRemote = normalizeProgressRecord(remote);
+        const remoteRecord = progressBelongsToEmail(normalizedRemote, email) ? normalizedRemote : null;
         if (remoteRecord && localRecord) return mergeProgressRecordPair(remoteRecord, localRecord);
         return remoteRecord || localRecord || createEmptyProgress(email);
       }
@@ -741,7 +748,8 @@ export const getCollaboratorProgress = async (collaboratorEmail: string): Promis
       }
 
       const remote = (await response.json()) as CollaboratorProgress;
-      const remoteRecord = normalizeProgressRecord(remote);
+      const normalizedRemote = normalizeProgressRecord(remote);
+      const remoteRecord = progressBelongsToEmail(normalizedRemote, email) ? normalizedRemote : null;
       if (remoteRecord && localRecord) return mergeProgressRecordPair(remoteRecord, localRecord);
       return remoteRecord || localRecord || createEmptyProgress(email);
     } catch {

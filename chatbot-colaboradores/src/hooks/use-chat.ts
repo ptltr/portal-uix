@@ -1849,8 +1849,32 @@ export function useChat() {
     const selected = pickPreferredSnapshot(validRemote, validLocal);
     const selectedHasReport = Boolean(String(selected?.finalReport || "").trim());
     const selectedIsComplete = Boolean(selected?.isEvaluationComplete) || selectedHasReport;
+    const selectedUserMessagesCount = normalizeIncomingMessages(selected?.messages || [])
+      .filter((msg) => msg.role === "user" && String(msg.content || "").trim().length > 0)
+      .length;
+    const selectedReportResourceKeys = new Set(
+      parseRecommendedResourceTitles(String(selected?.finalReport || ""))
+        .map((title) => normalizeTitleKey(title))
+        .filter(Boolean)
+    );
+    const progressResourceKeys = new Set(
+      (progressResult?.assignedResources || [])
+        .map((title) => normalizeTitleKey(String(title || "")))
+        .filter(Boolean)
+    );
+    const resourceOverlapCount = [...selectedReportResourceKeys]
+      .filter((key) => progressResourceKeys.has(key))
+      .length;
+    const snapshotLikelyContaminated = Boolean(
+      selected
+      && selectedHasReport
+      && selectedUserMessagesCount === 0
+      && progressResourceKeys.size > 0
+      && selectedReportResourceKeys.size > 0
+      && resourceOverlapCount === 0
+    );
 
-    if (hasRecoverableProgress && (!selected || !selectedIsComplete)) {
+    if (hasRecoverableProgress && (!selected || !selectedIsComplete || snapshotLikelyContaminated)) {
       const progress = progressResult!;
       const report = buildRecoveredReportFromProgress({
         email: normalizedEmail,
