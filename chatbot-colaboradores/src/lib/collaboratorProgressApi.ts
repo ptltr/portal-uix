@@ -89,7 +89,11 @@ const resolveAppsScriptRuntimeUrl = async (baseUrl: string): Promise<string> => 
     throw new Error(`Apps Script probe failed: ${probeResponse.status}`);
   }
 
-  const resolved = probeResponse.url || baseUrl;
+  const resolvedUrl = new URL(probeResponse.url || baseUrl);
+  resolvedUrl.searchParams.delete("action");
+  resolvedUrl.searchParams.delete("payload");
+  resolvedUrl.searchParams.delete("email");
+  const resolved = resolvedUrl.toString();
   appsScriptRuntimeUrlCache.set(baseUrl, resolved);
   return resolved;
 };

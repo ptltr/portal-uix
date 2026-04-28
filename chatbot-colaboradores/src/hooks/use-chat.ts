@@ -1378,6 +1378,7 @@ export function useChat() {
   const hasHydratedRef = useRef(false);
   const lastSyncedAssessmentRef = useRef("");
   const remoteSaveTimeoutRef = useRef<number | null>(null);
+  const lastRemoteSaveAlertAtRef = useRef(0);
 
   const [conversationId, setConversationId] = useState<number | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -1670,7 +1671,11 @@ export function useChat() {
     remoteSaveTimeoutRef.current = window.setTimeout(() => {
       const snapshot = getPersistedSnapshot();
       saveSessionByEmail(employeeEmail, snapshot).catch(() => {
-        window.alert("No se pudo guardar tu avance en la nube. Tu progreso solo estará disponible en este navegador hasta que se recupere la conexión.");
+        const now = Date.now();
+        if (now - lastRemoteSaveAlertAtRef.current > 30_000) {
+          lastRemoteSaveAlertAtRef.current = now;
+          window.alert("No se pudo guardar tu avance en la nube en este momento. Tu progreso permanece en este navegador y reintentaremos automáticamente.");
+        }
       });
     }, 400);
 
