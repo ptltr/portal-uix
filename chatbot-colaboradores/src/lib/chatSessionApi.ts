@@ -17,12 +17,37 @@ const buildAppsScriptUrl = (baseUrl: string, action: string, params?: Record<str
   return url.toString();
 };
 
-const callAppsScriptPost = async <T>(baseUrl: string, action: string, payload: unknown): Promise<T> => {
-  const url = new URL(baseUrl);
-  url.searchParams.set("action", action);
-  url.searchParams.set("payload", JSON.stringify(payload));
+const appsScriptRuntimeUrlCache = new Map<string, string>();
 
-  const response = await fetch(url.toString());
+const resolveAppsScriptRuntimeUrl = async (baseUrl: string): Promise<string> => {
+  const cached = appsScriptRuntimeUrlCache.get(baseUrl);
+  if (cached) return cached;
+
+  const probeUrl = new URL(baseUrl);
+  probeUrl.searchParams.set("action", "health");
+
+  const probeResponse = await fetch(probeUrl.toString());
+  if (!probeResponse.ok) {
+    throw new Error(`Apps Script probe failed: ${probeResponse.status}`);
+  }
+
+  const resolved = probeResponse.url.split("?")[0] ?? baseUrl;
+  appsScriptRuntimeUrlCache.set(baseUrl, resolved);
+  return resolved;
+};
+
+const callAppsScriptPost = async <T>(baseUrl: string, action: string, payload: unknown): Promise<T> => {
+  const body = new URLSearchParams();
+  body.set("action", action);
+  body.set("payload", JSON.stringify(payload));
+
+  let response = await fetch(baseUrl, { method: "POST", body });
+
+  if (!response.ok) {
+    const runtimeUrl = await resolveAppsScriptRuntimeUrl(baseUrl);
+    response = await fetch(runtimeUrl, { method: "POST", body });
+  }
+
   if (!response.ok) {
     throw new Error(`Apps Script request failed: ${response.status}`);
   }
