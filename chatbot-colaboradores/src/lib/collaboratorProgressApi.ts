@@ -392,14 +392,25 @@ const normalizeResourceKey = (value: string): string => {
     .trim();
 };
 
-const normalizeDeliverables = (value: unknown, fallbackSubmittedAt?: string): DeliverableRecord[] => {
+const normalizeDeliverables = (
+  value: unknown,
+  fallbackSubmittedAt?: string,
+  expectedEmail?: string,
+): DeliverableRecord[] => {
   if (!Array.isArray(value)) return [];
+
+  const normalizedExpectedEmail = normalizeEmail(String(expectedEmail || ""));
 
   return value
     .map((item, index) => {
       if (!item || typeof item !== "object") return null;
       const record = item as Partial<DeliverableRecord>;
-      const collaboratorEmail = normalizeEmail(typeof record.collaboratorEmail === "string" ? record.collaboratorEmail : "");
+      const collaboratorEmail = normalizeEmail(
+        typeof record.collaboratorEmail === "string" ? record.collaboratorEmail : "",
+      ) || normalizedExpectedEmail;
+      if (normalizedExpectedEmail && collaboratorEmail && collaboratorEmail !== normalizedExpectedEmail) {
+        return null;
+      }
       const id = typeof record.id === "string" && record.id.trim() ? record.id.trim() : `legacy-${Date.now()}-${index}`;
       const submittedAt = typeof record.submittedAt === "string" && record.submittedAt.trim()
         ? record.submittedAt
@@ -465,7 +476,11 @@ const normalizeProgressRecord = (value: unknown): CollaboratorProgress | null =>
   const fallbackSubmittedAt = typeof raw.updatedAt === "string" && raw.updatedAt.trim()
     ? raw.updatedAt
     : "";
-  const deliverables = normalizeDeliverables(raw.deliverables ?? raw.submissions, fallbackSubmittedAt);
+  const deliverables = normalizeDeliverables(
+    raw.deliverables ?? raw.submissions,
+    fallbackSubmittedAt,
+    collaboratorEmail,
+  );
   const totalResourcesCount = Math.max(
     toFiniteNumber(raw.totalResourcesCount, assignedResources.length || 5),
     assignedResources.length || 1,
