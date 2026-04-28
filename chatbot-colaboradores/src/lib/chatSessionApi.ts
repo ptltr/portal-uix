@@ -31,7 +31,7 @@ const resolveAppsScriptRuntimeUrl = async (baseUrl: string): Promise<string> => 
     throw new Error(`Apps Script probe failed: ${probeResponse.status}`);
   }
 
-  const resolved = probeResponse.url.split("?")[0] ?? baseUrl;
+  const resolved = probeResponse.url || baseUrl;
   appsScriptRuntimeUrlCache.set(baseUrl, resolved);
   return resolved;
 };
@@ -41,11 +41,11 @@ const callAppsScriptPost = async <T>(baseUrl: string, action: string, payload: u
   body.set("action", action);
   body.set("payload", JSON.stringify(payload));
 
-  let response = await fetch(baseUrl, { method: "POST", body });
+  const runtimeUrl = await resolveAppsScriptRuntimeUrl(baseUrl);
+  let response = await fetch(runtimeUrl, { method: "POST", body });
 
   if (!response.ok) {
-    const runtimeUrl = await resolveAppsScriptRuntimeUrl(baseUrl);
-    response = await fetch(runtimeUrl, { method: "POST", body });
+    response = await fetch(baseUrl, { method: "POST", body });
   }
 
   if (!response.ok) {
