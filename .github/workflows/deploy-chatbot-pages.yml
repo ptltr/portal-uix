@@ -48,8 +48,8 @@ jobs:
       - name: Build chatbot app for Pages
         env:
           BASE_PATH: /portal-uix/
-          VITE_API_BASE_URL: https://script.google.com/macros/s/AKfycbzlMWjNRT1EvDCjW9lQkV4j1EwU90Z85X6ulpQrRR8eAxnc2CD0z6J7m71ezqscpxrU/exec
-          VITE_REMINDER_API_BASE_URL: https://script.google.com/macros/s/AKfycbzlMWjNRT1EvDCjW9lQkV4j1EwU90Z85X6ulpQrRR8eAxnc2CD0z6J7m71ezqscpxrU/exec?token=uix-secret-token
+          VITE_API_BASE_URL: https://script.google.com/macros/s/AKfycbynS_eP4l7Oq1LOYyE5tnBaPoEzQsUobFU4MjWAGtIZdOv66fyH7zFsGvaIdbujv2T9aA/exec
+          VITE_REMINDER_API_BASE_URL: https://script.google.com/macros/s/AKfycbynS_eP4l7Oq1LOYyE5tnBaPoEzQsUobFU4MjWAGtIZdOv66fyH7zFsGvaIdbujv2T9aA/exec?token=uix-secret-token
         working-directory: chatbot-colaboradores
         run: pnpm build
 

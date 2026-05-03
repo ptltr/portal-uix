@@ -263,6 +263,15 @@ const parseSessionSnapshot = (value: unknown): PersistedChatState | null => {
 };
 
 const LEGACY_REMINDER_API_BASE_URL_KEY = "uix-reminder-api-base-url";
+const LEGACY_APPS_SCRIPT_BACKEND_URL = "https://script.google.com/macros/s/AKfycbzlMWjNRT1EvDCjW9lQkV4j1EwU90Z85X6ulpQrRR8eAxnc2CD0z6J7m71ezqscpxrU/exec";
+
+const getSessionWriteBaseUrls = (): string[] => {
+  const urls = [getApiBaseUrl(), LEGACY_APPS_SCRIPT_BACKEND_URL]
+    .map((url) => String(url || "").replace(/\/$/, ""))
+    .filter(Boolean);
+
+  return Array.from(new Set(urls));
+};
 
 const getSessionLookupBaseUrls = (): string[] => {
   const urls: string[] = [];
@@ -285,6 +294,8 @@ const getSessionLookupBaseUrls = (): string[] => {
       // Ignore localStorage access errors.
     }
   }
+
+  urls.push(LEGACY_APPS_SCRIPT_BACKEND_URL);
 
   return Array.from(new Set(urls));
 };
@@ -410,9 +421,9 @@ export const fetchSessionByEmail = async (email: string): Promise<PersistedChatS
 
 export const saveSessionByEmail = async (email: string, snapshot: PersistedChatState): Promise<void> => {
   const normalized = normalizeEmail(email);
-  const baseUrl = getApiBaseUrl();
+  const baseUrls = getSessionWriteBaseUrls();
 
-  if (!baseUrl || !isValidEmail(normalized)) {
+  if (!baseUrls.length || !isValidEmail(normalized)) {
     return;
   }
 
@@ -421,7 +432,7 @@ export const saveSessionByEmail = async (email: string, snapshot: PersistedChatS
     employeeEmail: normalized,
   };
 
-  const saveWithRest = async (): Promise<void> => {
+  const saveWithRest = async (baseUrl: string): Promise<void> => {
     await fetch(`${baseUrl}/api/chat-sessions/${encodeURIComponent(normalized)}`, {
       method: "PUT",
       headers: {
@@ -431,14 +442,14 @@ export const saveSessionByEmail = async (email: string, snapshot: PersistedChatS
     });
   };
 
-  const saveWithAppsScript = async (): Promise<void> => {
+  const saveWithAppsScript = async (baseUrl: string): Promise<void> => {
     await callAppsScriptPost(baseUrl, "upsertChatSession", {
       email: normalized,
       snapshot: payload,
     });
   };
 
-  const saveWithAppsScriptGetFallback = async (): Promise<void> => {
+  const saveWithAppsScriptGetFallback = async (baseUrl: string): Promise<void> => {
     const reduced = shrinkSnapshotForAppsScript(payload);
     const response = await fetch(
       buildAppsScriptUrl(baseUrl, "upsertChatSession", {
@@ -454,24 +465,40 @@ export const saveSessionByEmail = async (email: string, snapshot: PersistedChatS
     }
   };
 
-  if (isAppsScriptEndpoint(baseUrl)) {
+  let savedAtLeastOne = false;
+
+  for (const baseUrl of baseUrls) {
+    if (isAppsScriptEndpoint(baseUrl)) {
+      try {
+        await saveWithAppsScript(baseUrl);
+        savedAtLeastOne = true;
+        continue;
+      } catch {
+        try {
+          await saveWithAppsScriptGetFallback(baseUrl);
+          savedAtLeastOne = true;
+          continue;
+        } catch {
+          // Continue trying other configured backends.
+        }
+      }
+      continue;
+    }
+
     try {
-      await saveWithAppsScript();
-      return;
+      await saveWithRest(baseUrl);
+      savedAtLeastOne = true;
     } catch {
       try {
-        await saveWithAppsScriptGetFallback();
-        return;
+        await saveWithAppsScript(baseUrl);
+        savedAtLeastOne = true;
       } catch {
-        await saveWithRest();
+        // Continue trying other configured backends.
       }
-      return;
     }
   }
 
-  try {
-    await saveWithRest();
-  } catch {
-    await saveWithAppsScript();
+  if (!savedAtLeastOne) {
+    throw new Error("No session backend accepted the save request.");
   }
 };

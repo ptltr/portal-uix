@@ -57,7 +57,8 @@ export interface SendReminderPayload {
 
 const LOCAL_PROGRESS_KEY = "uix-collaborator-progress-v1";
 const REMINDER_API_BASE_URL_KEY = "uix-reminder-api-base-url";
-const DEFAULT_AUTOMATIC_BACKEND_BASE_URL = "https://script.google.com/macros/s/AKfycbzBdx5IHMaqNjYcN5O6z9k1oH9sbOffc0Ik353LF613zmZ0bROUDQSJQUTp2JvZ6RHJoQ/exec";
+const DEFAULT_AUTOMATIC_BACKEND_BASE_URL = "https://script.google.com/macros/s/AKfycbynS_eP4l7Oq1LOYyE5tnBaPoEzQsUobFU4MjWAGtIZdOv66fyH7zFsGvaIdbujv2T9aA/exec";
+const LEGACY_AUTOMATIC_BACKEND_BASE_URL = "https://script.google.com/macros/s/AKfycbzlMWjNRT1EvDCjW9lQkV4j1EwU90Z85X6ulpQrRR8eAxnc2CD0z6J7m71ezqscpxrU/exec";
 
 const isAppsScriptEndpoint = (url: string): boolean => {
   return /script\.google\.com\/macros\/s\/.+\/exec/.test(url);
@@ -352,6 +353,43 @@ const getReminderApiBaseUrl = (): string => {
   }
 
   return DEFAULT_AUTOMATIC_BACKEND_BASE_URL;
+};
+
+const getProgressWriteBaseUrls = (): string[] => {
+  const urls = [getApiBaseUrl(), LEGACY_AUTOMATIC_BACKEND_BASE_URL]
+    .map((url) => String(url || "").replace(/\/$/, ""))
+    .filter(Boolean);
+
+  return Array.from(new Set(urls));
+};
+
+const getProgressLookupBaseUrls = (): string[] => {
+  const urls = [getApiBaseUrl(), LEGACY_AUTOMATIC_BACKEND_BASE_URL]
+    .map((url) => String(url || "").replace(/\/$/, ""))
+    .filter(Boolean);
+
+  try {
+    const fromStorage = localStorage.getItem(REMINDER_API_BASE_URL_KEY) || "";
+    if (fromStorage) {
+      urls.push(fromStorage.replace(/\/$/, ""));
+    }
+  } catch {
+    // Ignore localStorage access errors.
+  }
+
+  return Array.from(new Set(urls));
+};
+
+const hasMeaningfulProgressData = (record: CollaboratorProgress | null | undefined): boolean => {
+  if (!record) return false;
+  return Boolean(
+    record.assignedResources.length
+    || record.deliverables.length
+    || record.completedResourcesCount > 0
+    || String(record.collaboratorName || "").trim()
+    || String(record.trainerName || "").trim()
+    || String(record.profile || "").trim(),
+  );
 };
 
 export const isReminderBackendConfigured = (): boolean => {
@@ -728,29 +766,33 @@ const upsertLocalDeliverable = (payload: DeliverablePayload): DeliverableRecord 
 };
 
 export const uploadDeliverable = async (payload: DeliverablePayload): Promise<DeliverableRecord> => {
-  const baseUrl = getApiBaseUrl();
+  const baseUrls = getProgressWriteBaseUrls();
 
-  if (baseUrl) {
-    try {
-      if (isAppsScriptEndpoint(baseUrl)) {
-        return await callAppsScriptPost<DeliverableRecord>(baseUrl, "uploadDeliverable", payload);
+  if (baseUrls.length) {
+    for (const baseUrl of baseUrls) {
+      try {
+        if (isAppsScriptEndpoint(baseUrl)) {
+          return await callAppsScriptPost<DeliverableRecord>(baseUrl, "uploadDeliverable", payload);
+        }
+
+        const response = await fetch(`${baseUrl}/api/collaborators/progress/deliverables`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+
+        if (!response.ok) {
+          throw new Error(`Failed to upload deliverable: ${response.status}`);
+        }
+
+        return (await response.json()) as DeliverableRecord;
+      } catch {
+        // Try next configured backend.
       }
-
-      const response = await fetch(`${baseUrl}/api/collaborators/progress/deliverables`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-
-      if (!response.ok) {
-        throw new Error(`Failed to upload deliverable: ${response.status}`);
-      }
-
-      return (await response.json()) as DeliverableRecord;
-    } catch {
-      // Keep progress tracking usable even if remote backend is unreachable.
-      return upsertLocalDeliverable(payload);
     }
+
+    // Keep progress tracking usable even if remote backend is unreachable.
+    return upsertLocalDeliverable(payload);
   }
 
   // Fallback for environments without backend.
@@ -758,29 +800,33 @@ export const uploadDeliverable = async (payload: DeliverablePayload): Promise<De
 };
 
 export const syncCollaboratorAssessment = async (payload: SyncCollaboratorAssessmentPayload): Promise<CollaboratorProgress> => {
-  const baseUrl = getApiBaseUrl();
+  const baseUrls = getProgressWriteBaseUrls();
 
-  if (baseUrl) {
-    try {
-      if (isAppsScriptEndpoint(baseUrl)) {
-        return await callAppsScriptPost<CollaboratorProgress>(baseUrl, "syncCollaboratorAssessment", payload);
+  if (baseUrls.length) {
+    for (const baseUrl of baseUrls) {
+      try {
+        if (isAppsScriptEndpoint(baseUrl)) {
+          return await callAppsScriptPost<CollaboratorProgress>(baseUrl, "syncCollaboratorAssessment", payload);
+        }
+
+        const response = await fetch(`${baseUrl}/api/collaborators/progress/assessments`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+
+        if (!response.ok) {
+          throw new Error(`Failed to sync collaborator assessment: ${response.status}`);
+        }
+
+        return (await response.json()) as CollaboratorProgress;
+      } catch {
+        // Try next configured backend.
       }
-
-      const response = await fetch(`${baseUrl}/api/collaborators/progress/assessments`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-
-      if (!response.ok) {
-        throw new Error(`Failed to sync collaborator assessment: ${response.status}`);
-      }
-
-      return (await response.json()) as CollaboratorProgress;
-    } catch {
-      // Keep progress tracking usable even if remote backend is unreachable.
-      return upsertLocalAssessment(payload);
     }
+
+    // Keep progress tracking usable even if remote backend is unreachable.
+    return upsertLocalAssessment(payload);
   }
 
   return upsertLocalAssessment(payload);
@@ -788,34 +834,56 @@ export const syncCollaboratorAssessment = async (payload: SyncCollaboratorAssess
 
 export const getCollaboratorProgress = async (collaboratorEmail: string): Promise<CollaboratorProgress> => {
   const email = normalizeEmail(collaboratorEmail);
-  const baseUrl = getApiBaseUrl();
+  const baseUrls = getProgressLookupBaseUrls();
   const localMap = getLocalProgressMap();
   const normalizedLocal = normalizeProgressRecord(localMap[email]);
   const localRecord = progressBelongsToEmail(normalizedLocal, email) ? normalizedLocal : null;
 
-  if (baseUrl) {
-    try {
-      if (isAppsScriptEndpoint(baseUrl)) {
-        const remote = await callAppsScriptGet<CollaboratorProgress>(baseUrl, "getCollaboratorProgress", { email });
+  if (baseUrls.length) {
+    let bestRemote: CollaboratorProgress | null = null;
+
+    for (const baseUrl of baseUrls) {
+      try {
+        if (isAppsScriptEndpoint(baseUrl)) {
+          const remote = await callAppsScriptGet<CollaboratorProgress>(baseUrl, "getCollaboratorProgress", { email });
+          const normalizedRemote = normalizeProgressRecord(remote);
+          const remoteRecord = progressBelongsToEmail(normalizedRemote, email) ? normalizedRemote : null;
+          if (!remoteRecord) continue;
+
+          if (!bestRemote || (hasMeaningfulProgressData(remoteRecord) && !hasMeaningfulProgressData(bestRemote))) {
+            bestRemote = remoteRecord;
+            continue;
+          }
+
+          if ((remoteRecord.updatedAt || "") > (bestRemote.updatedAt || "")) {
+            bestRemote = remoteRecord;
+          }
+          continue;
+        }
+
+        const response = await fetch(`${baseUrl}/api/collaborators/progress/${encodeURIComponent(email)}`);
+        if (!response.ok) continue;
+
+        const remote = (await response.json()) as CollaboratorProgress;
         const normalizedRemote = normalizeProgressRecord(remote);
         const remoteRecord = progressBelongsToEmail(normalizedRemote, email) ? normalizedRemote : null;
-        if (remoteRecord && localRecord) return mergeProgressRecordPair(remoteRecord, localRecord);
-        return remoteRecord || localRecord || createEmptyProgress(email);
-      }
+        if (!remoteRecord) continue;
 
-      const response = await fetch(`${baseUrl}/api/collaborators/progress/${encodeURIComponent(email)}`);
-      if (!response.ok) {
-        throw new Error(`Failed to fetch collaborator progress: ${response.status}`);
-      }
+        if (!bestRemote || (hasMeaningfulProgressData(remoteRecord) && !hasMeaningfulProgressData(bestRemote))) {
+          bestRemote = remoteRecord;
+          continue;
+        }
 
-      const remote = (await response.json()) as CollaboratorProgress;
-      const normalizedRemote = normalizeProgressRecord(remote);
-      const remoteRecord = progressBelongsToEmail(normalizedRemote, email) ? normalizedRemote : null;
-      if (remoteRecord && localRecord) return mergeProgressRecordPair(remoteRecord, localRecord);
-      return remoteRecord || localRecord || createEmptyProgress(email);
-    } catch {
-      return localRecord || createEmptyProgress(email);
+        if ((remoteRecord.updatedAt || "") > (bestRemote.updatedAt || "")) {
+          bestRemote = remoteRecord;
+        }
+      } catch {
+        // Try next configured backend.
+      }
     }
+
+    if (bestRemote && localRecord) return mergeProgressRecordPair(bestRemote, localRecord);
+    return bestRemote || localRecord || createEmptyProgress(email);
   }
 
   // Fallback for environments without backend.
@@ -823,31 +891,40 @@ export const getCollaboratorProgress = async (collaboratorEmail: string): Promis
 };
 
 export const listCollaboratorsProgress = async (): Promise<CollaboratorProgress[]> => {
-  const baseUrl = getApiBaseUrl();
+  const baseUrls = getProgressLookupBaseUrls();
   const localMap = getLocalProgressMap();
   const localList = Object.values(localMap)
     .map((record) => normalizeProgressRecord(record))
     .filter((record): record is CollaboratorProgress => Boolean(record));
 
-  if (baseUrl) {
-    if (isAppsScriptEndpoint(baseUrl)) {
-      const remote = await callAppsScriptGet<CollaboratorProgress[]>(baseUrl, "listCollaboratorsProgress");
-      const remoteList = (Array.isArray(remote) ? remote : [])
-        .map((record) => normalizeProgressRecord(record))
-        .filter((record): record is CollaboratorProgress => Boolean(record));
-      return mergeProgressLists(remoteList, localList);
+  if (baseUrls.length) {
+    let mergedRemote: CollaboratorProgress[] = [];
+
+    for (const baseUrl of baseUrls) {
+      try {
+        if (isAppsScriptEndpoint(baseUrl)) {
+          const remote = await callAppsScriptGet<CollaboratorProgress[]>(baseUrl, "listCollaboratorsProgress");
+          const remoteList = (Array.isArray(remote) ? remote : [])
+            .map((record) => normalizeProgressRecord(record))
+            .filter((record): record is CollaboratorProgress => Boolean(record));
+          mergedRemote = mergeProgressLists(mergedRemote, remoteList);
+          continue;
+        }
+
+        const response = await fetch(`${baseUrl}/api/collaborators/progress`);
+        if (!response.ok) continue;
+
+        const remote = (await response.json()) as CollaboratorProgress[];
+        const remoteList = (Array.isArray(remote) ? remote : [])
+          .map((record) => normalizeProgressRecord(record))
+          .filter((record): record is CollaboratorProgress => Boolean(record));
+        mergedRemote = mergeProgressLists(mergedRemote, remoteList);
+      } catch {
+        // Try next configured backend.
+      }
     }
 
-    const response = await fetch(`${baseUrl}/api/collaborators/progress`);
-    if (!response.ok) {
-      throw new Error(`Failed to fetch collaborators progress list: ${response.status}`);
-    }
-
-    const remote = (await response.json()) as CollaboratorProgress[];
-    const remoteList = (Array.isArray(remote) ? remote : [])
-      .map((record) => normalizeProgressRecord(record))
-      .filter((record): record is CollaboratorProgress => Boolean(record));
-    return mergeProgressLists(remoteList, localList);
+    return mergeProgressLists(mergedRemote, localList);
   }
 
   return localList.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
