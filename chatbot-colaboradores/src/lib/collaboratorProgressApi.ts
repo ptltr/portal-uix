@@ -57,7 +57,7 @@ export interface SendReminderPayload {
 
 const LOCAL_PROGRESS_KEY = "uix-collaborator-progress-v1";
 const REMINDER_API_BASE_URL_KEY = "uix-reminder-api-base-url";
-const DEFAULT_AUTOMATIC_BACKEND_BASE_URL = "https://script.google.com/macros/s/AKfycbynS_eP4l7Oq1LOYyE5tnBaPoEzQsUobFU4MjWAGtIZdOv66fyH7zFsGvaIdbujv2T9aA/exec";
+const DEFAULT_AUTOMATIC_BACKEND_BASE_URL = "https://script.google.com/macros/s/AKfycbzlMWjNRT1EvDCjW9lQkV4j1EwU90Z85X6ulpQrRR8eAxnc2CD0z6J7m71ezqscpxrU/exec";
 const LEGACY_AUTOMATIC_BACKEND_BASE_URL = "https://script.google.com/macros/s/AKfycbzlMWjNRT1EvDCjW9lQkV4j1EwU90Z85X6ulpQrRR8eAxnc2CD0z6J7m71ezqscpxrU/exec";
 
 const isAppsScriptEndpoint = (url: string): boolean => {
