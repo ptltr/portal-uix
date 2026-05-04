@@ -47,6 +47,9 @@ export const getCatalogCompetencies = (roleId: string): Promise<CatalogQuestion[
 export const getCatalogQuestions = (competencyId: string): Promise<CatalogQuestion[]> =>
   catalogGet("getQuestions", { competency_id: competencyId });
 
+export const getCatalogAllResources = (competencyId: string): Promise<CatalogResource[]> =>
+  catalogGet("getAllResources", { competency_id: competencyId });
+
 export const getCatalogResources = (
   competencyId: string,
   developmentLevel: string,

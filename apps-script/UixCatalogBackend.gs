@@ -115,6 +115,21 @@ function getResources(competencyId, developmentLevel) {
 }
 
 /*******************************
+ * TODOS LOS RECURSOS DE UNA COMPETENCIA (sin filtro de nivel)
+ *******************************/
+function getAllResources(competencyId) {
+  var resources = readSheet("desarrollo");
+  return resources.filter(function (r) {
+    var linkField = r.resource_link || r.link || r.url || "";
+    return (
+      trimId(r.competency_id) === trimId(competencyId) &&
+      isActive(r.active) &&
+      String(linkField).trim() !== ""
+    );
+  });
+}
+
+/*******************************
  * PERFIL POR ROL
  *******************************/
 function getRole(roleId) {
@@ -172,6 +187,18 @@ function doGet(e) {
           String(e.parameter.development_level || "")
         )
       );
+    }
+
+    if (action === "getAllResources") {
+      return jsonResponse(
+        getAllResources(String(e.parameter.competency_id || ""))
+      );
+    }
+
+    // Debug: returns raw rows from desarrollo sheet to see actual field values
+    if (action === "debugResources") {
+      var rows = readSheet("desarrollo");
+      return jsonResponse(rows.slice(0, 5));
     }
 
     if (action === "health") {

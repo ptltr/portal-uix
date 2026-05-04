@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { getCollaboratorProgress, syncCollaboratorAssessment } from "@/lib/collaboratorProgressApi";
 import { fetchSessionByEmail, hasSessionByEmail, saveSessionByEmail } from "@/lib/chatSessionApi";
-import { getCatalogCompetencies, getCatalogQuestions, getCatalogResources } from "@/lib/catalogApi";
+import { getCatalogCompetencies, getCatalogQuestions, getCatalogAllResources } from "@/lib/catalogApi";
 import type { CatalogQuestion } from "@/lib/catalogApi";
 
 export type MessageRole = "user" | "assistant" | "system";
@@ -751,9 +751,13 @@ const fetchAndApplyCatalogResources = async (
       .map((key) => flow.assessments[key])
       .filter((e): e is AssessmentEntry => Boolean(e?.classification));
 
-    const opportunityEntries = entries.filter(
-      (e) => e.classification !== "solid" && e.classification !== "functional-strong",
+    const strengthKeys = new Set(
+      entries
+        .filter((e) => e.classification === "solid" || e.classification === "functional-strong")
+        .map((e) => e.competencyKey),
     );
+
+    const opportunityEntries = entries.filter((e) => !strengthKeys.has(e.competencyKey));
 
     if (!opportunityEntries.length) return null;
 
@@ -774,7 +778,8 @@ const fetchAndApplyCatalogResources = async (
       if (!catalogId) continue;
 
       try {
-        const rows = await getCatalogResources(catalogId, "oportunidad");
+        // getAllResources fetches all active resources for this competency regardless of level
+        const rows = await getCatalogAllResources(catalogId);
         for (const row of rows) {
           if (fetchedResources.length >= 5) break;
           const link = String(row.resource_link ?? row.link ?? row.url ?? "").trim();
@@ -1481,8 +1486,10 @@ const advanceAssessmentFlow = (flow: AssessmentFlow, answer: OptionId, forceSkip
     const updatedEntry: AssessmentEntry = { ...currentEntry, q1: answer };
 
     if (answer === "C" || forceSkipQ2) {
-      updatedEntry.classification = "solid";
-      updatedEntry.isPriority = false;
+      // In catalog mode (forceSkipQ2=true) classify the answer properly instead of always "solid"
+      const classification = forceSkipQ2 ? classifyAssessment(answer) : "solid";
+      updatedEntry.classification = classification;
+      updatedEntry.isPriority = buildAssessmentPriority(answer);
       const nextIndex = flow.competencyIndex + 1;
       const isComplete = nextIndex >= flow.competencyOrder.length;
       return {
