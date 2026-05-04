@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { getCollaboratorProgress, syncCollaboratorAssessment } from "@/lib/collaboratorProgressApi";
 import { fetchSessionByEmail, hasSessionByEmail, saveSessionByEmail } from "@/lib/chatSessionApi";
+import { getCatalogCompetencies, getCatalogResources } from "@/lib/catalogApi";
+import type { CatalogQuestion } from "@/lib/catalogApi";
 
 export type MessageRole = "user" | "assistant" | "system";
 
@@ -654,6 +656,150 @@ const normalize = (value: string): string =>
 
   const normalizeTitleKey = (value: string): string => normalize(value).replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim();
 
+// ─── Catalog integration ─────────────────────────────────────────────────────
+
+const CATALOG_ID_TO_LEGACY_KEY: Record<string, string> = {
+  communication: "comunicacion-efectiva",
+  empathy: "empatia",
+  collaboration: "trabajo-en-equipo",
+  problem_solving: "solucion-de-problemas",
+  self_management: "autogestion",
+  learning: "aprendizaje-continuo",
+  proactivity: "proactividad",
+  proactivit: "proactividad",
+  assertiveness: "asertividad",
+  decision_making: "toma-de-decisiones",
+  results_orientation: "orientacion-a-resultados",
+  negotiation: "negociacion",
+  service_orientation: "orientacion-al-servicio",
+  conflict_management: "manejo-de-conflictos",
+  business_mindset: "mentalidad-de-negocio",
+};
+
+const LEGACY_KEY_TO_CATALOG_ID: Record<string, string> = Object.fromEntries(
+  Object.entries(CATALOG_ID_TO_LEGACY_KEY)
+    .filter(([, v], i, arr) => arr.findIndex(([, v2]) => v2 === v) === i)
+    .map(([k, v]) => [v, k]),
+);
+
+const toRoleId = (profile: string): string => {
+  const n = normalize(profile);
+  if (n.includes("product")) return "product_designer";
+  if (n.includes("customer success") || n.includes("customer-success") || n === "cs") return "customer_success";
+  return "ux_ui";
+};
+
+/**
+ * Classify a free-text response against keyword patterns from the catalog.
+ * Returns the option level whose keywords best match the response.
+ */
+const classifyByKeywords = (text: string, question: CatalogQuestion): OptionId => {
+  const normalizedText = normalize(text);
+  const parseKws = (raw: string) =>
+    String(raw || "").split(",").map((p) => normalize(p.trim())).filter(Boolean);
+
+  const pA = parseKws(question.patterns_A);
+  const pB = parseKws(question.patterns_B);
+  const pC = parseKws(question.patterns_C);
+
+  const countMatches = (patterns: string[]) =>
+    patterns.reduce((acc, kw) => acc + (kw && normalizedText.includes(kw) ? 1 : 0), 0);
+
+  const sA = countMatches(pA);
+  const sB = countMatches(pB);
+  const sC = countMatches(pC);
+
+  if (sA === 0 && sB === 0 && sC === 0) {
+    const fb = String(question.fallback_level || "B").toUpperCase();
+    return (["A", "B", "C"].includes(fb) ? fb : "B") as OptionId;
+  }
+
+  if (sC >= sB && sC >= sA) return "C";
+  if (sB >= sA) return "B";
+  return "A";
+};
+
+/** Format an open-ended catalog question (scenario + question text). */
+const formatOpenQuestion = (
+  name: string,
+  question: CatalogQuestion,
+  isFirst: boolean,
+): string => {
+  const intro = isFirst
+    ? `Hola ${name || "colaborador"}. Tendremos una conversación guiada. No hay respuestas correctas o incorrectas — responde con tus propias palabras describiendo cómo actúas normalmente.\n\n`
+    : "";
+  const scenario = String(question.scenario || "").trim();
+  const q = String(question.question || "").trim();
+  return `${intro}${scenario ? `**Situación:** ${scenario}\n\n` : ""}**${q}**`;
+};
+
+/** Fetch catalog resources for each opportunity competency and patch the report. */
+const fetchAndApplyCatalogResources = async (
+  flow: AssessmentFlow,
+  report: string,
+): Promise<string | null> => {
+  try {
+    const entries = flow.competencyOrder
+      .map((key) => flow.assessments[key])
+      .filter((e): e is AssessmentEntry => Boolean(e?.classification));
+
+    const opportunityEntries = entries.filter(
+      (e) => e.classification !== "solid" && e.classification !== "functional-strong",
+    );
+
+    if (!opportunityEntries.length) return null;
+
+    const fetchedResources: ResourceRecommendation[] = [];
+    const seen = new Set<string>();
+
+    const add = (r: ResourceRecommendation) => {
+      if (!r.title || seen.has(r.title) || !r.url) return;
+      seen.add(r.title);
+      fetchedResources.push(r);
+    };
+
+    WORKSHOP_RESOURCES.forEach(add);
+
+    for (const entry of opportunityEntries) {
+      if (fetchedResources.length >= 5) break;
+      const catalogId = LEGACY_KEY_TO_CATALOG_ID[entry.competencyKey];
+      if (!catalogId) continue;
+
+      try {
+        const rows = await getCatalogResources(catalogId, "oportunidad");
+        for (const row of rows) {
+          if (fetchedResources.length >= 5) break;
+          const link = String(row.resource_link ?? row.link ?? row.url ?? "").trim();
+          const title = String(row.resource_title ?? row.title ?? row.nombre ?? "").trim();
+          if (!link || !title) continue;
+          add({
+            title,
+            type: String(row.resource_type ?? row.type ?? row.tipo ?? "Curso recomendado").trim(),
+            why: String(row.resource_description ?? row.description ?? row.descripcion ?? "Te ayudará a desarrollar esta competencia.").trim(),
+            url: link,
+          });
+        }
+      } catch {
+        // Skip this competency's resources silently
+      }
+    }
+
+    const hasNewResources = fetchedResources.some(
+      (r) => !WORKSHOP_RESOURCES.some((w) => w.title === r.title),
+    );
+    if (!hasNewResources) return null;
+
+    const resourceLines = buildResourceBlock(fetchedResources);
+    const pattern = /###\s+(Recursos recomendados|Tus 5 recursos de desarrollo|Recursos de desarrollo)[\s\S]*?(?=\n###\s|\n---REPORTE_FIN---|$)/i;
+    if (pattern.test(report)) {
+      return report.replace(pattern, `### Recursos recomendados\n${resourceLines}`);
+    }
+    return null;
+  } catch {
+    return null;
+  }
+};
+
 const FOLLOW_UP_LEADS = [
   "Con base en lo que respondiste, quiero profundizar un poco:",
   "Gracias, para entenderlo mejor te hago una pregunta breve adicional:",
@@ -1023,12 +1169,12 @@ const getCompetencyOrder = (profileKey: ProfileKey): string[] => {
   return [...BASE_COMPETENCIES, ...PROFILE_COMPETENCIES[profileKey]];
 };
 
-const createAssessmentFlow = (profileLabel: string): AssessmentFlow => {
+const createAssessmentFlow = (profileLabel: string, customCompetencyOrder?: string[]): AssessmentFlow => {
   const profileKey = toProfileKey(profileLabel);
   return {
     profileKey,
     profileLabel,
-    competencyOrder: getCompetencyOrder(profileKey),
+    competencyOrder: customCompetencyOrder || getCompetencyOrder(profileKey),
     competencyIndex: 0,
     pendingQuestion: "q1",
     assessments: {},
@@ -1319,14 +1465,14 @@ ${followUpEmailLine}
   return rebuildReportResourcesByCompetencies(report);
 };
 
-const advanceAssessmentFlow = (flow: AssessmentFlow, answer: OptionId) => {
+const advanceAssessmentFlow = (flow: AssessmentFlow, answer: OptionId, forceSkipQ2 = false) => {
   const competencyKey = flow.competencyOrder[flow.competencyIndex];
   const currentEntry: AssessmentEntry = flow.assessments[competencyKey] || { competencyKey };
 
   if (flow.pendingQuestion === "q1") {
     const updatedEntry: AssessmentEntry = { ...currentEntry, q1: answer };
 
-    if (answer === "C") {
+    if (answer === "C" || forceSkipQ2) {
       updatedEntry.classification = "solid";
       updatedEntry.isPriority = false;
       const nextIndex = flow.competencyIndex + 1;
@@ -1410,6 +1556,8 @@ export function useChat() {
   const [assessmentFlow, setAssessmentFlow] = useState<AssessmentFlow | null>(null);
 
   const signalsRef = useRef<SignalState>({ strengths: {}, opportunities: {} });
+  const catalogQuestionsRef = useRef<Record<string, CatalogQuestion>>({});
+  const catalogLoadedRef = useRef(false);
 
   const clearRuntimeState = useCallback(() => {
     setConversationId(null);
@@ -1735,10 +1883,16 @@ export function useChat() {
   useEffect(() => {
     if (!conversationId || !employeeName || messages.length > 0 || !assessmentFlow) return;
 
+    const firstKey = assessmentFlow.competencyOrder[0];
+    const catalogQuestion = catalogLoadedRef.current ? catalogQuestionsRef.current[firstKey] : null;
+    const content = catalogQuestion
+      ? formatOpenQuestion(employeeName, catalogQuestion, true)
+      : formatQuestionWithOptions(employeeName, assessmentFlow, true);
+
     const initialAssistantMsg: ChatMessage = {
       id: `assistant-${Date.now()}`,
       role: "assistant",
-      content: formatQuestionWithOptions(employeeName, assessmentFlow, true),
+      content,
     };
 
     setMessages([initialAssistantMsg]);
@@ -1750,13 +1904,23 @@ export function useChat() {
 
     const userMsgId = Date.now().toString();
     const assistantMsgId = (Date.now() + 1).toString();
-    const selectedOption = detectSelectedOption(content);
+
+    // Determine whether we are in catalog (open-ended) or legacy (A/B/C) mode
+    const currentCompetencyKey = assessmentFlow.competencyOrder[assessmentFlow.competencyIndex];
+    const catalogQuestion = catalogLoadedRef.current
+      ? catalogQuestionsRef.current[currentCompetencyKey] ?? null
+      : null;
+
+    const selectedOption = catalogQuestion
+      ? classifyByKeywords(content, catalogQuestion)
+      : detectSelectedOption(content);
 
     let fullResponseContent = "";
     let shouldCompleteAfterStream = false;
     let nextReport = "";
 
     if (!selectedOption) {
+      // Legacy mode: user did not type A, B, or C
       setIsInFollowUp(true);
       setFollowUpCount((prev) => prev + 1);
       fullResponseContent = buildAssistantPromptForInvalidAnswer(assessmentFlow);
@@ -1764,7 +1928,7 @@ export function useChat() {
       setIsInFollowUp(false);
       setFollowUpCount(0);
 
-      const advanced = advanceAssessmentFlow(assessmentFlow, selectedOption);
+      const advanced = advanceAssessmentFlow(assessmentFlow, selectedOption, catalogQuestion !== null);
       setAssessmentFlow(advanced.flow);
 
       if (advanced.isComplete) {
@@ -1773,11 +1937,28 @@ export function useChat() {
         setCurrentStep(advanced.flow.competencyOrder.length * 2);
         shouldCompleteAfterStream = true;
         fullResponseContent = `${buildTransitionMessage()}\n\nGracias por completar esta conversación guiada. Ya preparé tu resumen de desarrollo. Puedes ver tu progreso desde **Ver avance** y ver tu plan de desarrollo en **Descargar PDF**.`;
+
+        // Asynchronously enhance report with real resources from catalog
+        if (catalogLoadedRef.current) {
+          void fetchAndApplyCatalogResources(advanced.flow, nextReport).then((updatedReport) => {
+            if (updatedReport) setFinalReport(updatedReport);
+          });
+        }
       } else {
-        const transition = buildTransitionMessage();
-        const nextQuestion = formatQuestionWithOptions(employeeName, advanced.flow, false);
+        const nextKey = advanced.flow.competencyOrder[advanced.flow.competencyIndex];
+        const nextCatalogQuestion = catalogLoadedRef.current
+          ? catalogQuestionsRef.current[nextKey] ?? null
+          : null;
+
+        const empathyResponse = catalogQuestion?.empathy_response?.trim() || buildTransitionMessage();
+
+        if (nextCatalogQuestion) {
+          fullResponseContent = `${empathyResponse}\n\n${formatOpenQuestion(employeeName, nextCatalogQuestion, false)}`;
+        } else {
+          fullResponseContent = `${buildTransitionMessage()}\n\n${formatQuestionWithOptions(employeeName, advanced.flow, false)}`;
+        }
+
         setCurrentStep((prev) => prev + 1);
-        fullResponseContent = `${transition}\n\n${nextQuestion}`;
       }
     }
 
@@ -1822,12 +2003,44 @@ export function useChat() {
     }, 400);
   }, [assessmentFlow, employeeEmail, employeeName, selectedProfile, trainerName]);
 
-  const startNewEvaluation = useCallback((profile = "") => {
+  const startNewEvaluation = useCallback(async (profile = "") => {
     clearRuntimeState();
-    if (profile.trim()) {
-      setSelectedProfile(profile);
-      setAssessmentFlow(createAssessmentFlow(profile));
+    if (!profile.trim()) return;
+
+    setSelectedProfile(profile);
+
+    // Try to load questions from the catalog AS for this role
+    try {
+      const roleId = toRoleId(profile);
+      const catalogRows = await getCatalogCompetencies(roleId);
+
+      if (Array.isArray(catalogRows) && catalogRows.length > 0) {
+        const questionsMap: Record<string, CatalogQuestion> = {};
+        const competencyOrder: string[] = [];
+
+        for (const row of catalogRows) {
+          const catalogId = String(row.competency_id || "").trim();
+          const legacyKey = CATALOG_ID_TO_LEGACY_KEY[catalogId];
+          if (!legacyKey || questionsMap[legacyKey]) continue; // take first row per competency
+          questionsMap[legacyKey] = row;
+          competencyOrder.push(legacyKey);
+        }
+
+        if (competencyOrder.length > 0) {
+          catalogQuestionsRef.current = questionsMap;
+          catalogLoadedRef.current = true;
+          setAssessmentFlow(createAssessmentFlow(profile, competencyOrder));
+          return;
+        }
+      }
+    } catch {
+      // Fall through to hardcoded flow
     }
+
+    // Fallback: use hardcoded competency order
+    catalogLoadedRef.current = false;
+    catalogQuestionsRef.current = {};
+    setAssessmentFlow(createAssessmentFlow(profile));
   }, [clearRuntimeState]);
 
   const resetChat = useCallback(() => {
