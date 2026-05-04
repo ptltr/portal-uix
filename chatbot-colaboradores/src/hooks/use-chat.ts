@@ -695,12 +695,13 @@ const toRoleId = (profile: string): string => {
  */
 const classifyByKeywords = (text: string, question: CatalogQuestion): OptionId => {
   const normalizedText = normalize(text);
-  const parseKws = (raw: string) =>
-    String(raw || "").split(",").map((p) => normalize(p.trim())).filter(Boolean);
+  const row = question as unknown as Record<string, unknown>;
+  const parseKws = (raw: unknown) =>
+    String(raw ?? "").split(",").map((p) => normalize(p.trim())).filter(Boolean);
 
-  const pA = parseKws(question.patterns_A);
-  const pB = parseKws(question.patterns_B);
-  const pC = parseKws(question.patterns_C);
+  const pA = parseKws(row.patterns_a ?? row.patterns_A ?? row.Patterns_A ?? row["patterns a"] ?? "");
+  const pB = parseKws(row.patterns_b ?? row.patterns_B ?? row.Patterns_B ?? row["patterns b"] ?? "");
+  const pC = parseKws(row.patterns_c ?? row.patterns_C ?? row.Patterns_C ?? row["patterns c"] ?? "");
 
   const countMatches = (patterns: string[]) =>
     patterns.reduce((acc, kw) => acc + (kw && normalizedText.includes(kw) ? 1 : 0), 0);
@@ -710,7 +711,7 @@ const classifyByKeywords = (text: string, question: CatalogQuestion): OptionId =
   const sC = countMatches(pC);
 
   if (sA === 0 && sB === 0 && sC === 0) {
-    const fb = String(question.fallback_level || "B").toUpperCase();
+    const fb = String(row.fallback_level ?? row.Fallback_level ?? row.fallback ?? "B").toUpperCase();
     return (["A", "B", "C"].includes(fb) ? fb : "B") as OptionId;
   }
 
@@ -728,8 +729,15 @@ const formatOpenQuestion = (
   const intro = isFirst
     ? `Hola ${name || "colaborador"}. Tendremos una conversación guiada. No hay respuestas correctas o incorrectas — responde con tus propias palabras describiendo cómo actúas normalmente.\n\n`
     : "";
-  const scenario = String(question.scenario || "").trim();
-  const q = String(question.question || "").trim();
+  // Accept multiple possible casings from the Sheet headers
+  const row = question as unknown as Record<string, unknown>;
+  const scenario = String(
+    row.scenario ?? row.Scenario ?? row.SCENARIO ?? "",
+  ).trim();
+  const q = String(
+    row.question ?? row.Question ?? row.QUESTION ?? row.pregunta ?? row.Pregunta ?? "",
+  ).trim();
+  if (!scenario && !q) return intro.trim();
   return `${intro}${scenario ? `**Situación:** ${scenario}\n\n` : ""}**${q}**`;
 };
 

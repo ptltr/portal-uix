@@ -30,7 +30,15 @@ async function catalogGet<T>(
   const res = await fetch(`${CATALOG_BASE_URL}?${qs}`);
   if (!res.ok) throw new Error(`Catalog HTTP ${res.status}`);
   const data: unknown = await res.json();
-  return (Array.isArray(data) ? data : []) as T;
+  const arr = Array.isArray(data) ? data : [];
+  // Normalize all keys to lowercase so column header casing in the Sheet doesn't matter.
+  const normalized = arr.map((row: unknown) => {
+    if (!row || typeof row !== "object") return row;
+    return Object.fromEntries(
+      Object.entries(row as Record<string, unknown>).map(([k, v]) => [k.toLowerCase().trim(), v]),
+    );
+  });
+  return normalized as T;
 }
 
 export const getCatalogCompetencies = (roleId: string): Promise<CatalogQuestion[]> =>
