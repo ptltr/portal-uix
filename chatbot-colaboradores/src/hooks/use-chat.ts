@@ -747,19 +747,15 @@ const fetchAndApplyCatalogResources = async (
   report: string,
 ): Promise<string | null> => {
   try {
-    const entries = flow.competencyOrder
-      .map((key) => flow.assessments[key])
-      .filter((e): e is AssessmentEntry => Boolean(e?.classification));
+    // Derive strength/opportunity keys from the REPORT TEXT so they match exactly
+    // what buildPersonalizedReport decided (including fallback strengths).
+    const strengthsSection = extractSection(report, ["Fortalezas", "Tus fortalezas"]);
+    const opportunitiesSection = extractSection(report, ["Áreas de oportunidad", "Areas de oportunidad", "Lo que más puedes potenciar", "Lo que puedes potenciar"]);
+    const strengthKeys = new Set(parseCompetencyKeysFromSection(strengthsSection));
+    const opportunityKeys = parseCompetencyKeysFromSection(opportunitiesSection)
+      .filter((key) => !strengthKeys.has(key));
 
-    const strengthKeys = new Set(
-      entries
-        .filter((e) => e.classification === "solid" || e.classification === "functional-strong")
-        .map((e) => e.competencyKey),
-    );
-
-    const opportunityEntries = entries.filter((e) => !strengthKeys.has(e.competencyKey));
-
-    if (!opportunityEntries.length) return null;
+    if (!opportunityKeys.length) return null;
 
     const fetchedResources: ResourceRecommendation[] = [];
     const seen = new Set<string>();
@@ -770,27 +766,15 @@ const fetchAndApplyCatalogResources = async (
       fetchedResources.push(r);
     };
 
-    // Only add workshop resources that relate to opportunity competencies (not strengths)
-    const workshopCommunicationCompetencies = ["comunicacion-efectiva", "communication"];
-    const hasCommAsOpportunity = opportunityEntries.some(
-      (e) =>
-        workshopCommunicationCompetencies.includes(e.competencyKey) ||
-        workshopCommunicationCompetencies.includes(LEGACY_KEY_TO_CATALOG_ID[e.competencyKey] ?? ""),
-    );
-    if (hasCommAsOpportunity) {
-      add(WORKSHOP_RESOURCES[0]); // communication workshop
-    }
-
-    for (const entry of opportunityEntries) {
+    for (const legacyKey of opportunityKeys) {
       if (fetchedResources.length >= 5) break;
-      const catalogId = LEGACY_KEY_TO_CATALOG_ID[entry.competencyKey];
+      const catalogId = LEGACY_KEY_TO_CATALOG_ID[legacyKey];
       if (!catalogId) continue;
 
       try {
-        // getAllResources fetches all active resources for this competency regardless of level
         const rows = await getCatalogAllResources(catalogId);
+        // Take at most 1 resource per competency (pick the first active one with link+title)
         for (const row of rows) {
-          if (fetchedResources.length >= 5) break;
           const link = String(row.resource_link ?? row.link ?? row.url ?? "").trim();
           const title = String(row.resource_title ?? row.title ?? row.nombre ?? "").trim();
           if (!link || !title) continue;
@@ -800,16 +784,14 @@ const fetchAndApplyCatalogResources = async (
             why: String(row.resource_description ?? row.description ?? row.descripcion ?? "Te ayudará a desarrollar esta competencia.").trim(),
             url: link,
           });
+          break; // Only 1 resource per competency
         }
       } catch {
-        // Skip this competency's resources silently
+        // Skip this competency silently
       }
     }
 
-    const hasNewResources = fetchedResources.some(
-      (r) => !WORKSHOP_RESOURCES.some((w) => w.title === r.title),
-    );
-    if (!hasNewResources) return null;
+    if (!fetchedResources.length) return null;
 
     const resourceLines = buildResourceBlock(fetchedResources);
     const pattern = /###\s+(Recursos recomendados|Tus 5 recursos de desarrollo|Recursos de desarrollo)[\s\S]*?(?=\n###\s|\n---REPORTE_FIN---|$)/i;
