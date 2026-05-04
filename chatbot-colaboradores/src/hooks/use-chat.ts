@@ -1302,8 +1302,7 @@ const classificationWeight: Record<Classification, number> = {
 };
 
 const buildStrengthNarrative = (classification: Classification, competency: CompetencyDefinition): string => {
-  if (classification === "solid") return competency.strengthDescription;
-  return `Ya muestras una base consistente en esta competencia. ${competency.strengthDescription}`;
+  return competency.strengthDescription;
 };
 
 const buildOpportunityNarrative = (classification: Classification, competency: CompetencyDefinition): string => {
@@ -1311,10 +1310,7 @@ const buildOpportunityNarrative = (classification: Classification, competency: C
     return `${competency.opportunityDescription} Conviene darle atención prioritaria porque hoy puede limitar tu impacto o tu claridad al colaborar.`;
   }
   if (classification === "emergent") {
-    return `Ya hay señales positivas en esta competencia, pero todavía necesita práctica deliberada para volverse consistente. ${competency.opportunityDescription}`;
-  }
-  if (classification === "functional-developing") {
-    return `Hay una base funcional, aunque todavía no siempre se sostiene con la misma claridad o consistencia. ${competency.opportunityDescription}`;
+    return `${competency.opportunityDescription} Hay señales positivas, pero todavía necesita práctica deliberada para volverse consistente.`;
   }
   return competency.opportunityDescription;
 };
