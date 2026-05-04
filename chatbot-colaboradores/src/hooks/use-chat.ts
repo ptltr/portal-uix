@@ -1858,11 +1858,7 @@ export function useChat() {
     remoteSaveTimeoutRef.current = window.setTimeout(() => {
       const snapshot = getPersistedSnapshot();
       saveSessionByEmail(employeeEmail, snapshot).catch(() => {
-        const now = Date.now();
-        if (now - lastRemoteSaveAlertAtRef.current > 30_000) {
-          lastRemoteSaveAlertAtRef.current = now;
-          window.alert("No se pudo guardar tu avance en la nube en este momento. Tu progreso permanece en este navegador y reintentaremos automáticamente.");
-        }
+        // Remote save failed — data is safe in localStorage, no alert needed.
       });
     }, 400);
 

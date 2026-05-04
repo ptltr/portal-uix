@@ -117,16 +117,15 @@ const normalizeEmail = (value: string): string => value.trim().toLowerCase();
 const isValidEmail = (value: string): boolean => /\S+@\S+\.\S+/.test(value.trim());
 
 const shrinkSnapshotForAppsScript = (snapshot: PersistedChatState): PersistedChatState => {
-  const trimmedMessages = (snapshot.messages || []).slice(-18).map((message) => ({
-    ...message,
-    text: typeof message.text === "string" ? message.text.slice(0, 360) : message.text,
-  }));
-
+  // Keep only essential fields so the GET fallback URL stays under ~2000 chars
   return {
-    ...snapshot,
-    messages: trimmedMessages,
-    finalReport: String(snapshot.finalReport || "").slice(0, 20_000),
-  };
+    employeeEmail: snapshot.employeeEmail,
+    selectedProfile: snapshot.selectedProfile,
+    conversationId: snapshot.conversationId,
+    assessmentFlow: snapshot.assessmentFlow,
+    finalReport: String(snapshot.finalReport || "").slice(0, 800),
+    messages: [],
+  } as unknown as PersistedChatState;
 };
 
 const parseJsonIfString = (value: unknown): unknown => {
