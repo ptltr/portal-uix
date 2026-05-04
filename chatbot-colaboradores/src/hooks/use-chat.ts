@@ -770,7 +770,16 @@ const fetchAndApplyCatalogResources = async (
       fetchedResources.push(r);
     };
 
-    WORKSHOP_RESOURCES.forEach(add);
+    // Only add workshop resources that relate to opportunity competencies (not strengths)
+    const workshopCommunicationCompetencies = ["comunicacion-efectiva", "communication"];
+    const hasCommAsOpportunity = opportunityEntries.some(
+      (e) =>
+        workshopCommunicationCompetencies.includes(e.competencyKey) ||
+        workshopCommunicationCompetencies.includes(LEGACY_KEY_TO_CATALOG_ID[e.competencyKey] ?? ""),
+    );
+    if (hasCommAsOpportunity) {
+      add(WORKSHOP_RESOURCES[0]); // communication workshop
+    }
 
     for (const entry of opportunityEntries) {
       if (fetchedResources.length >= 5) break;
