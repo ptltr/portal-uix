@@ -174,7 +174,7 @@ export function ChatScreen({
                 Conversación guiada de desarrollo
               </h3>
               <p className="text-muted-foreground max-w-md mx-auto text-sm leading-relaxed">
-                Responde cada pregunta con A, B o C. El asistente irá recorriendo competencias clave según tu perfil y al final te entregará un resumen práctico.
+                Responde libremente cada pregunta. El asistente irá recorriendo competencias clave según tu perfil y al final te entregará un resumen práctico.
               </p>
             </motion.div>
           )}
