@@ -22,6 +22,8 @@ export type CatalogResource = {
   [key: string]: unknown;
 };
 
+export type CompetencyResult = "fortaleza" | "oportunidad_baja" | "oportunidad_alta";
+
 async function catalogGet<T>(
   action: string,
   params: Record<string, string> = {},
@@ -58,3 +60,27 @@ export const getCatalogResources = (
     competency_id: competencyId,
     development_level: developmentLevel,
   });
+
+export const getResourcesForCompetencyResult = async (
+  competencyId: string,
+  result: CompetencyResult,
+): Promise<CatalogResource[]> => {
+  if (!competencyId.trim()) {
+    return [];
+  }
+
+  if (result === "fortaleza") {
+    return [];
+  }
+
+  try {
+    return await getCatalogResources(competencyId, result);
+  } catch (error) {
+    console.error("Failed to fetch catalog resources", {
+      competencyId,
+      result,
+      error,
+    });
+    return [];
+  }
+};

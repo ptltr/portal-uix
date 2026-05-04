@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { getCollaboratorProgress, syncCollaboratorAssessment } from "@/lib/collaboratorProgressApi";
 import { fetchSessionByEmail, hasSessionByEmail, saveSessionByEmail } from "@/lib/chatSessionApi";
-import { getCatalogCompetencies, getCatalogQuestions, getCatalogAllResources } from "@/lib/catalogApi";
-import type { CatalogQuestion } from "@/lib/catalogApi";
+import { getCatalogCompetencies, getCatalogQuestions, getResourcesForCompetencyResult } from "@/lib/catalogApi";
+import type { CatalogQuestion, CompetencyResult } from "@/lib/catalogApi";
 
 export type MessageRole = "user" | "assistant" | "system";
 
@@ -742,6 +742,18 @@ const formatOpenQuestion = (
 };
 
 /** Fetch catalog resources for each opportunity competency and patch the report. */
+const toCatalogResourceResult = (classification?: Classification): CompetencyResult => {
+  if (classification === "solid" || classification === "functional-strong") {
+    return "fortaleza";
+  }
+
+  if (classification === "functional-developing") {
+    return "oportunidad_baja";
+  }
+
+  return "oportunidad_alta";
+};
+
 const fetchAndApplyCatalogResources = async (
   flow: AssessmentFlow,
   report: string,
@@ -771,8 +783,11 @@ const fetchAndApplyCatalogResources = async (
       const catalogId = LEGACY_KEY_TO_CATALOG_ID[legacyKey];
       if (!catalogId) continue;
 
+      const assessment = flow.assessments[legacyKey];
+      const result = toCatalogResourceResult(assessment?.classification);
+
       try {
-        const rows = await getCatalogAllResources(catalogId);
+        const rows = await getResourcesForCompetencyResult(catalogId, result);
         // Take at most 1 resource per competency (pick the first active one with link+title)
         for (const row of rows) {
           const link = String(row.resource_link ?? row.link ?? row.url ?? "").trim();
