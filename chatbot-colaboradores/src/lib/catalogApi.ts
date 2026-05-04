@@ -44,6 +44,9 @@ async function catalogGet<T>(
 export const getCatalogCompetencies = (roleId: string): Promise<CatalogQuestion[]> =>
   catalogGet("getCompetencies", { role_id: roleId });
 
+export const getCatalogQuestions = (competencyId: string): Promise<CatalogQuestion[]> =>
+  catalogGet("getQuestions", { competency_id: competencyId });
+
 export const getCatalogResources = (
   competencyId: string,
   developmentLevel: string,

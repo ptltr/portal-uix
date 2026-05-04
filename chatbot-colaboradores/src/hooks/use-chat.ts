@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { getCollaboratorProgress, syncCollaboratorAssessment } from "@/lib/collaboratorProgressApi";
 import { fetchSessionByEmail, hasSessionByEmail, saveSessionByEmail } from "@/lib/chatSessionApi";
-import { getCatalogCompetencies, getCatalogResources } from "@/lib/catalogApi";
+import { getCatalogCompetencies, getCatalogQuestions, getCatalogResources } from "@/lib/catalogApi";
 import type { CatalogQuestion } from "@/lib/catalogApi";
 
 export type MessageRole = "user" | "assistant" | "system";
@@ -2020,25 +2020,43 @@ export function useChat() {
     // Try to load questions from the catalog AS for this role
     try {
       const roleId = toRoleId(profile);
-      const catalogRows = await getCatalogCompetencies(roleId);
+      const competencyRows = await getCatalogCompetencies(roleId);
 
-      if (Array.isArray(catalogRows) && catalogRows.length > 0) {
+      if (Array.isArray(competencyRows) && competencyRows.length > 0) {
         const questionsMap: Record<string, CatalogQuestion> = {};
         const competencyOrder: string[] = [];
 
-        for (const row of catalogRows) {
+        // Build ordered list of competency IDs from the role
+        const orderedIds: string[] = [];
+        for (const row of competencyRows) {
           const catalogId = String(row.competency_id || "").trim();
           const legacyKey = CATALOG_ID_TO_LEGACY_KEY[catalogId];
-          if (!legacyKey || questionsMap[legacyKey]) continue; // take first row per competency
-          questionsMap[legacyKey] = row;
+          if (!legacyKey || orderedIds.includes(catalogId)) continue;
+          orderedIds.push(catalogId);
           competencyOrder.push(legacyKey);
         }
 
-        if (competencyOrder.length > 0) {
-          catalogQuestionsRef.current = questionsMap;
-          catalogLoadedRef.current = true;
-          setAssessmentFlow(createAssessmentFlow(profile, competencyOrder));
-          return;
+        if (orderedIds.length > 0) {
+          // Fetch the first question for each competency in parallel
+          const questionResults = await Promise.all(
+            orderedIds.map((id) => getCatalogQuestions(id).catch(() => [])),
+          );
+
+          for (let i = 0; i < orderedIds.length; i++) {
+            const rows = questionResults[i];
+            const legacyKey = competencyOrder[i];
+            if (rows.length > 0) {
+              questionsMap[legacyKey] = rows[0]; // use first question per competency
+            }
+          }
+
+          const keysWithQuestions = competencyOrder.filter((k) => questionsMap[k]);
+          if (keysWithQuestions.length > 0) {
+            catalogQuestionsRef.current = questionsMap;
+            catalogLoadedRef.current = true;
+            setAssessmentFlow(createAssessmentFlow(profile, keysWithQuestions));
+            return;
+          }
         }
       }
     } catch {
