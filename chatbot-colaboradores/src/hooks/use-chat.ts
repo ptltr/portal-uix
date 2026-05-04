@@ -1399,10 +1399,15 @@ const buildPersonalizedReport = (args: {
     .sort((left, right) => classificationWeight[left.classification!] - classificationWeight[right.classification!])
     .slice(0, 4);
 
-  const fallbackStrengths = entries
-    .filter((entry) => !strengths.some((current) => current.competencyKey === entry.competencyKey))
-    .sort((left, right) => classificationWeight[right.classification!] - classificationWeight[left.classification!])
-    .slice(0, Math.max(0, 3 - strengths.length));
+  const fallbackStrengths = strengths.length < 3
+    ? entries
+        .filter((entry) =>
+          !strengths.some((s) => s.competencyKey === entry.competencyKey) &&
+          !opportunities.some((o) => o.competencyKey === entry.competencyKey),
+        )
+        .sort((left, right) => classificationWeight[right.classification!] - classificationWeight[left.classification!])
+        .slice(0, 3 - strengths.length)
+    : [];
 
   const resolvedStrengths = [...strengths, ...fallbackStrengths].slice(0, 4);
   const resolvedOpportunities = opportunities.length
