@@ -301,7 +301,7 @@ export function WelcomeScreen({
                 {[
                   { label: 'Preguntas guiadas', icon: '💬' },
                   { label: '~5 minutos', icon: '⏱️' },
-                  { label: 'Opciones A/B/C', icon: '🧭' },
+                  { label: 'Recursos', icon: '🧭' },
                 ].map(item => (
                   <div key={item.label} className="glass-card rounded-2xl p-3 text-center border border-white/8">
                     <div className="text-xl mb-1">{item.icon}</div>
