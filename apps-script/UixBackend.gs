@@ -80,13 +80,25 @@ function upsertChatSession_(payload) {
   var sheet = getSheet_("chat_sessions", ["email", "snapshot_json", "updated_at"]);
   var values = sheet.getDataRange().getValues();
   var rowIndex = -1;
+  var existingSnapshot = null;
 
   for (var i = 1; i < values.length; i++) {
     if (normalizeEmail_(values[i][0]) === email) {
       rowIndex = i + 1;
+      try { existingSnapshot = JSON.parse(values[i][1] || "{}"); } catch (e) { existingSnapshot = null; }
       break;
     }
   }
+
+  // If the incoming snapshot signals it was shrunk for URL (preserveMessages=true)
+  // and the stored session already has real messages, keep them instead of overwriting with [].
+  if (snapshot.preserveMessages && existingSnapshot) {
+    var existingMessages = Array.isArray(existingSnapshot.messages) ? existingSnapshot.messages : [];
+    if (existingMessages.length > 0) {
+      snapshot.messages = existingMessages;
+    }
+  }
+  delete snapshot.preserveMessages;
 
   var rowData = [email, JSON.stringify(snapshot), new Date()];
   if (rowIndex > 0) {

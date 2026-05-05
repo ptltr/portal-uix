@@ -1593,42 +1593,6 @@ export function useChat() {
     signalsRef.current = { strengths: {}, opportunities: {} };
   }, []);
 
-  const reconstructMessagesFromFlow = useCallback((flow: AssessmentFlow): ChatMessage[] => {
-    const msgs: ChatMessage[] = [];
-    const ts = Date.now();
-    for (const competencyKey of flow.competencyOrder) {
-      const entry = flow.assessments[competencyKey];
-      if (!entry) continue;
-      const competencyDef = COMPETENCIES[competencyKey];
-      if (!competencyDef) continue;
-      if (entry.q1) {
-        msgs.push({
-          id: `restored-${competencyKey}-q1-a-${ts}`,
-          role: "assistant",
-          content: competencyDef.questions.q1.prompt,
-        });
-        msgs.push({
-          id: `restored-${competencyKey}-q1-u-${ts}`,
-          role: "user",
-          content: competencyDef.questions.q1.options[entry.q1],
-        });
-      }
-      if (entry.q2) {
-        msgs.push({
-          id: `restored-${competencyKey}-q2-a-${ts}`,
-          role: "assistant",
-          content: competencyDef.questions.q2.prompt,
-        });
-        msgs.push({
-          id: `restored-${competencyKey}-q2-u-${ts}`,
-          role: "user",
-          content: competencyDef.questions.q2.options[entry.q2],
-        });
-      }
-    }
-    return msgs;
-  }, []);
-
   const applyPersistedState = useCallback((parsed: PersistedChatState) => {
     const parsedMessages = normalizeIncomingMessages(parsed.messages);
     const normalizedReport = migrateLegacyReportContent(parsed.finalReport || "");
@@ -1651,20 +1615,15 @@ export function useChat() {
 
     const hasReport = Boolean(baseReport.trim());
     const hasMeaningfulContent = parsedMessages.length > 0 || hasReport || Boolean(rebuiltFlow);
-
-    // If messages weren't persisted remotely (stripped to save space), reconstruct Q&A
-    // from the assessment flow so the user can see their answers when resuming by email.
     const hydratedMessages = parsedMessages.length
       ? parsedMessages
-      : (flowIsComplete && rebuiltFlow)
-        ? reconstructMessagesFromFlow(rebuiltFlow)
-        : hasReport
-          ? [{
-              id: `assistant-restored-${Date.now()}`,
-              role: "assistant" as const,
-              content: "Recuperamos tu reporte guardado. Usa Ver avance para retomar tu seguimiento.",
-            }]
-          : [];
+      : hasReport
+        ? [{
+            id: `assistant-restored-${Date.now()}`,
+            role: "assistant" as const,
+            content: "Recuperamos tu reporte guardado. Usa Ver avance para retomar tu seguimiento.",
+          }]
+        : [];
 
     const hydratedConversationId = hasMeaningfulContent
       ? (typeof parsed.conversationId === "number" ? parsed.conversationId : Date.now())
@@ -1697,7 +1656,7 @@ export function useChat() {
     } else {
       signalsRef.current = { strengths: {}, opportunities: {} };
     }
-  }, [reconstructMessagesFromFlow]);
+  }, []);
 
   const getPersistedSnapshot = useCallback((): PersistedChatState => {
     return {

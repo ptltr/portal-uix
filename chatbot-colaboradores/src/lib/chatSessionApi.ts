@@ -116,8 +116,10 @@ const normalizeEmail = (value: string): string => value.trim().toLowerCase();
 
 const isValidEmail = (value: string): boolean => /\S+@\S+\.\S+/.test(value.trim());
 
-const shrinkSnapshotForAppsScript = (snapshot: PersistedChatState): PersistedChatState => {
-  // Keep only essential fields so the GET fallback URL stays under ~2000 chars
+const shrinkSnapshotForAppsScript = (snapshot: PersistedChatState): PersistedChatState & { preserveMessages?: boolean } => {
+  // Keep only essential fields so the GET fallback URL stays under ~2000 chars.
+  // Set preserveMessages=true so the Apps Script merges rather than overwrites
+  // any messages that were previously saved via a successful POST.
   return {
     employeeEmail: snapshot.employeeEmail,
     selectedProfile: snapshot.selectedProfile,
@@ -125,7 +127,8 @@ const shrinkSnapshotForAppsScript = (snapshot: PersistedChatState): PersistedCha
     assessmentFlow: snapshot.assessmentFlow,
     finalReport: String(snapshot.finalReport || "").slice(0, 800),
     messages: [],
-  } as unknown as PersistedChatState;
+    preserveMessages: true,
+  } as unknown as PersistedChatState & { preserveMessages?: boolean };
 };
 
 const parseJsonIfString = (value: unknown): unknown => {
