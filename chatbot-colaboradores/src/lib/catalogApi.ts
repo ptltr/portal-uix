@@ -24,6 +24,21 @@ export type CatalogResource = {
 
 export type CompetencyResult = "fortaleza" | "oportunidad_baja" | "oportunidad_alta";
 
+const normalizeId = (value: unknown): string => String(value ?? "").trim().toLowerCase();
+
+const getPriorityRank = (value: unknown): number => {
+  const normalized = normalizeId(value);
+  if (normalized === "alta" || normalized === "high") return 0;
+  if (normalized === "media" || normalized === "medium") return 1;
+  if (normalized === "baja" || normalized === "low") return 2;
+  return 3;
+};
+
+const fetchFromSheet = <T>(
+  action: string,
+  params: Record<string, string> = {},
+): Promise<T> => catalogGet<T>(action, params);
+
 async function catalogGet<T>(
   action: string,
   params: Record<string, string> = {},
@@ -65,7 +80,8 @@ export const getResourcesForCompetencyResult = async (
   competencyId: string,
   result: CompetencyResult,
 ): Promise<CatalogResource[]> => {
-  if (!competencyId.trim()) {
+  const normalizedCompetencyId = normalizeId(competencyId);
+  if (!normalizedCompetencyId) {
     return [];
   }
 
@@ -74,7 +90,15 @@ export const getResourcesForCompetencyResult = async (
   }
 
   try {
-    return await getCatalogResources(competencyId, result);
+    const rows = await fetchFromSheet<CatalogResource[]>("getResources", {
+      competency_id: competencyId,
+      development_level: result,
+    });
+
+    return rows
+      .filter((row) => normalizeId(row.competency_id) === normalizedCompetencyId)
+      .sort((a, b) => getPriorityRank(a.priority) - getPriorityRank(b.priority))
+      .slice(0, 2);
   } catch (error) {
     console.error("Failed to fetch catalog resources", {
       competencyId,
