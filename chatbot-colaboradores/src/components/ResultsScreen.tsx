@@ -49,8 +49,12 @@ function normalizeReportContent(content: string): string {
 }
 
 const parseRecommendedResourceTitles = (content: string): string[] => {
-  const matches = [...content.matchAll(/\*\*\d+\.\s([^\n*]+)\*\*/g)];
-  return matches.map((match) => match[1].trim());
+  // Support both formats:
+  // 1) **1. Titulo**
+  // 2) 1. **Titulo**
+  const formatA = [...content.matchAll(/\*\*\d+\.\s([^\n*]+)\*\*/g)].map((m) => m[1].trim());
+  const formatB = [...content.matchAll(/\n\s*\d+\.\s\*\*([^\n*]+)\*\*/g)].map((m) => m[1].trim());
+  return Array.from(new Set([...formatA, ...formatB].filter(Boolean)));
 };
 
 /**
@@ -435,8 +439,16 @@ export function ResultsScreen({ messages, onRestart, onBackToChat, onRegenerateR
   );
 
   const recommendedResources = useMemo(() => {
+    // Use full resource blocks first so "Mi avance" mirrors the report exactly.
+    const fromFullBlocks = parseFullResourcesFromReport(content)
+      .map((resource) => resource.title)
+      .filter(Boolean);
+    if (fromFullBlocks.length > 0) return fromFullBlocks;
+
+    // Fallback for older report formats.
     const fromReport = parseRecommendedResourceTitles(content).filter(Boolean);
     if (fromReport.length > 0) return fromReport;
+
     return resourcesFromProgress;
   }, [content, resourcesFromProgress]);
   const derivedProgress = useMemo(() => {
