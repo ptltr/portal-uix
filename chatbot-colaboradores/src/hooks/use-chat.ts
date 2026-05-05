@@ -1593,28 +1593,24 @@ export function useChat() {
   const applyPersistedState = useCallback((parsed: PersistedChatState) => {
     const parsedMessages = normalizeIncomingMessages(parsed.messages);
     const normalizedReport = migrateLegacyReportContent(parsed.finalReport || "");
-    const hasStoredReport = Boolean(normalizedReport.trim());
     const rebuiltFlow = rebuildAssessmentFlowFromSnapshot({
       selectedProfile: parsed.selectedProfile,
       assessmentFlow: parsed.assessmentFlow,
       messages: parsedMessages,
     });
     const flowIsComplete = isCompletedAssessmentFlow(rebuiltFlow);
-    // Only regenerate from flow when there is no stored report.
-    const regeneratedReport = !hasStoredReport && flowIsComplete
+
+    // Always regenerate from the flow when it's complete — this ensures the resources
+    // section is rebuilt fresh from the catalog, not from whatever was stored.
+    // If the flow is incomplete (mid-assessment restore), fall back to the stored report.
+    const baseReport = flowIsComplete
       ? buildPersonalizedReport({
           flow: rebuiltFlow!,
           employeeEmail: parsed.employeeEmail || "",
         })
       : normalizedReport;
-    // Only rebuild resources if the stored report has no resources section yet
-    // (migration for old reports). If it already has one, preserve it — rebuilding
-    // from the local dictionary would overwrite catalog resources with wrong entries.
-    const hasExistingResourcesSection = /###\s+(Recursos recomendados|Tus 5 recursos de desarrollo|Recursos de desarrollo)/i.test(regeneratedReport);
-    const refreshedReport = hasExistingResourcesSection
-      ? regeneratedReport
-      : rebuildReportResourcesByCompetencies(regeneratedReport);
-    const hasReport = Boolean(refreshedReport.trim());
+
+    const hasReport = Boolean(baseReport.trim());
     const hasMeaningfulContent = parsedMessages.length > 0 || hasReport || Boolean(rebuiltFlow);
     const hydratedMessages = parsedMessages.length
       ? parsedMessages
@@ -1636,11 +1632,18 @@ export function useChat() {
     setEmployeeEmail(parsed.employeeEmail || "");
     setTrainerName(parsed.trainerName || "");
     setCurrentStep(hasMeaningfulContent && typeof parsed.currentStep === "number" ? parsed.currentStep : 0);
-    setFinalReport(refreshedReport);
+    setFinalReport(baseReport);
     setFollowUpCount(hasMeaningfulContent && typeof parsed.followUpCount === "number" ? parsed.followUpCount : 0);
     setIsInFollowUp(hasMeaningfulContent && Boolean(parsed.isInFollowUp));
     setSelectedProfile(parsed.selectedProfile || "");
     setAssessmentFlow(rebuiltFlow);
+
+    // Async: patch with fresh catalog resources (replaces any stale resources from localStorage)
+    if (flowIsComplete && rebuiltFlow) {
+      void fetchAndApplyCatalogResources(rebuiltFlow, baseReport).then((updatedReport) => {
+        if (updatedReport) setFinalReport(updatedReport);
+      });
+    }
 
     if (parsed.signals?.strengths && parsed.signals?.opportunities) {
       signalsRef.current = {
