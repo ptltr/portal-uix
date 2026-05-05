@@ -806,7 +806,14 @@ const fetchAndApplyCatalogResources = async (
       }
     }
 
-    if (!fetchedResources.length) return null;
+    if (!fetchedResources.length) {
+      // No catalog resources found — replace the placeholder with a clear message
+      const pattern = /###\s+(Recursos recomendados|Tus 5 recursos de desarrollo|Recursos de desarrollo)[\s\S]*?(?=\n###\s|\n---REPORTE_FIN---|$)/i;
+      if (pattern.test(report)) {
+        return report.replace(pattern, `### Recursos recomendados\nNo se encontraron recursos disponibles en el catálogo para tus áreas de oportunidad. Consulta a Capital Humano para orientación personalizada.`);
+      }
+      return null;
+    }
 
     const resourceLines = buildResourceBlock(fetchedResources);
     const pattern = /###\s+(Recursos recomendados|Tus 5 recursos de desarrollo|Recursos de desarrollo)[\s\S]*?(?=\n###\s|\n---REPORTE_FIN---|$)/i;
@@ -1445,16 +1452,12 @@ const buildPersonalizedReport = (args: {
     return `- **${action.title}**: ${action.description}`;
   }).join("\n");
 
-  const resourceRecommendations = buildRecommendedResources(
-    resolvedOpportunities.map((entry) => entry.competencyKey),
-    resolvedStrengths.map((entry) => entry.competencyKey),
-  );
-  const resourceLines = buildResourceBlock(resourceRecommendations);
-
   const followUpEmailLine = args.employeeEmail
     ? `- **Correo de seguimiento:** ${args.employeeEmail}`
     : "- **Correo de seguimiento:** Pendiente de registro";
 
+  // Resources are intentionally left as a placeholder here.
+  // fetchAndApplyCatalogResources will replace this section with real catalog resources.
   const report = `---REPORTE_INICIO---
 ## Tu resumen de desarrollo profesional
 
@@ -1465,7 +1468,7 @@ ${strengthLines || "- **Base de desarrollo**: Ya cuentas con señales positivas 
 ${opportunityLines || "- **Profundizar en tu práctica**: Tu siguiente paso está en volver más consistentes las fortalezas que ya muestras."}
 
 ### Recursos recomendados
-${resourceLines}
+_Cargando recursos personalizados..._
 
 ### Acciones prácticas recomendadas
 ${actionLines || "- **Sostener una práctica breve**: Define un hábito concreto por semana y dale seguimiento diario."}
@@ -1474,7 +1477,7 @@ ${actionLines || "- **Sostener una práctica breve**: Define un hábito concreto
 ${followUpEmailLine}
 ---REPORTE_FIN---`;
 
-  return rebuildReportResourcesByCompetencies(report);
+  return report;
 };
 
 const advanceAssessmentFlow = (flow: AssessmentFlow, answer: OptionId, forceSkipQ2 = false) => {
