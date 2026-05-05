@@ -116,19 +116,26 @@ const normalizeEmail = (value: string): string => value.trim().toLowerCase();
 
 const isValidEmail = (value: string): boolean => /\S+@\S+\.\S+/.test(value.trim());
 
-const shrinkSnapshotForAppsScript = (snapshot: PersistedChatState): PersistedChatState & { preserveMessages?: boolean } => {
-  // Keep only essential fields so the GET fallback URL stays under ~2000 chars.
-  // Set preserveMessages=true so the Apps Script merges rather than overwrites
-  // any messages that were previously saved via a successful POST.
+const shrinkSnapshotForAppsScript = (snapshot: PersistedChatState): PersistedChatState => {
+  // The GET fallback URL has a length budget. To fit messages, we skip finalReport
+  // when the assessmentFlow is complete (the report is always rebuilt from the flow on load).
+  // Message IDs are stripped (regenerated on parse) to save additional space.
+  const flow = snapshot.assessmentFlow as { competencyOrder?: string[]; assessments?: Record<string, { classification?: string }> } | null | undefined;
+  const flowIsComplete = Boolean(
+    flow?.competencyOrder?.length &&
+    flow.competencyOrder.every((key) => Boolean(flow.assessments?.[key]?.classification))
+  );
+
+  const compactMessages = (snapshot.messages || []).map(({ role, content }) => ({ role, content }));
+
   return {
     employeeEmail: snapshot.employeeEmail,
     selectedProfile: snapshot.selectedProfile,
     conversationId: snapshot.conversationId,
     assessmentFlow: snapshot.assessmentFlow,
-    finalReport: String(snapshot.finalReport || "").slice(0, 800),
-    messages: [],
-    preserveMessages: true,
-  } as unknown as PersistedChatState & { preserveMessages?: boolean };
+    finalReport: flowIsComplete ? "" : String(snapshot.finalReport || "").slice(0, 800),
+    messages: compactMessages,
+  } as unknown as PersistedChatState;
 };
 
 const parseJsonIfString = (value: unknown): unknown => {
