@@ -1615,7 +1615,13 @@ export function useChat() {
           employeeEmail: parsed.employeeEmail || "",
         })
       : normalizedReport;
-    const refreshedReport = rebuildReportResourcesByCompetencies(regeneratedReport);
+    // Only rebuild resources if the stored report has no resources section yet
+    // (migration for old reports). If it already has one, preserve it — rebuilding
+    // from the local dictionary would overwrite catalog resources with wrong entries.
+    const hasExistingResourcesSection = /###\s+(Recursos recomendados|Tus 5 recursos de desarrollo|Recursos de desarrollo)/i.test(regeneratedReport);
+    const refreshedReport = hasExistingResourcesSection
+      ? regeneratedReport
+      : rebuildReportResourcesByCompetencies(regeneratedReport);
     const hasReport = Boolean(refreshedReport.trim());
     const hasMeaningfulContent = parsedMessages.length > 0 || hasReport || Boolean(rebuiltFlow);
     const hydratedMessages = parsedMessages.length
