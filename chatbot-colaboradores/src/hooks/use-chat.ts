@@ -2164,6 +2164,7 @@ export function useChat() {
       selected
       && selectedHasReport
       && selectedUserMessagesCount === 0
+      && !isValidAssessmentFlow(selected.assessmentFlow)  // flow present = real session, not contaminated
       && progressResourceKeys.size > 0
       && selectedReportResourceKeys.size > 0
       && resourceOverlapCount === 0
