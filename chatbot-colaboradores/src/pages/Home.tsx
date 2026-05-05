@@ -78,6 +78,7 @@ export default function Home() {
     loadSessionForEmail,
     forceResumeLatestLocalSession,
     recoverSessionFromProgress,
+    regenerateReport,
   } = useChat();
 
   const hasSavedSession = messages.length > 0 || Boolean(finalReport);
@@ -261,6 +262,7 @@ export default function Home() {
             messages={messages}
             onRestart={handleRestart}
             onBackToChat={handleBackToChat}
+            onRegenerateReport={regenerateReport}
             profile={selectedProfile}
             level={selectedLevel}
             employeeName={employeeName}

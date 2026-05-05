@@ -12,6 +12,7 @@ interface ResultsScreenProps {
   messages: ChatMessage[];
   onRestart: () => void;
   onBackToChat: () => void;
+  onRegenerateReport?: () => Promise<boolean>;
   profile: string;
   level: string;
   employeeName: string;
@@ -413,9 +414,10 @@ const getVisibleDeliverableSummary = (deliverable: CollaboratorProgress['deliver
   return filteredLines.join('\n').trim();
 };
 
-export function ResultsScreen({ messages, onRestart, onBackToChat, profile, employeeName, employeeEmail, trainerName, finalReport, assessmentId }: ResultsScreenProps) {
+export function ResultsScreen({ messages, onRestart, onBackToChat, onRegenerateReport, profile, employeeName, employeeEmail, trainerName, finalReport, assessmentId }: ResultsScreenProps) {
   const rawContent = normalizeReportContent(finalReport || extractReportContent(messages));
   const [isGenerating, setIsGenerating] = useState(false);
+  const [isRegeneratingReport, setIsRegeneratingReport] = useState(false);
   const [isSubmittingDeliverable, setIsSubmittingDeliverable] = useState(false);
   const [progress, setProgress] = useState<CollaboratorProgress | null>(null);
   const [progressError, setProgressError] = useState<string | null>(null);
@@ -515,6 +517,22 @@ export function ResultsScreen({ messages, onRestart, onBackToChat, profile, empl
       generatePDF(content, profile, date);
     } finally {
       setIsGenerating(false);
+    }
+  };
+
+  const handleRegenerateReport = async () => {
+    if (!onRegenerateReport) return;
+    setIsRegeneratingReport(true);
+    setProgressError(null);
+    try {
+      const ok = await onRegenerateReport();
+      if (!ok) {
+        setProgressError('No se pudo regenerar el reporte porque no hay una evaluación completa guardada.');
+      }
+    } catch {
+      setProgressError('No fue posible regenerar el reporte en este momento.');
+    } finally {
+      setIsRegeneratingReport(false);
     }
   };
 
@@ -951,6 +969,15 @@ export function ResultsScreen({ messages, onRestart, onBackToChat, profile, empl
           >
             <Download className="w-4 h-4" />
             <span>{isGenerating ? 'Generando PDF...' : 'Descargar mi plan en PDF'}</span>
+          </button>
+
+          <button
+            onClick={handleRegenerateReport}
+            disabled={!onRegenerateReport || isRegeneratingReport}
+            className="flex items-center justify-center gap-2 px-6 py-3.5 rounded-xl glass-card border border-white/10 text-muted-foreground font-medium text-sm hover:border-primary/50 hover:text-foreground transition-all duration-200 disabled:opacity-60 disabled:cursor-not-allowed"
+          >
+            <RefreshCw className="w-4 h-4" />
+            <span>{isRegeneratingReport ? 'Regenerando reporte...' : 'Regenerar reporte'}</span>
           </button>
 
           <button

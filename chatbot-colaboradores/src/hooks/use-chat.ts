@@ -2287,6 +2287,29 @@ export function useChat() {
     }
   }, [applyPersistedState]);
 
+  const regenerateReport = useCallback(async (): Promise<boolean> => {
+    if (!assessmentFlow || !isCompletedAssessmentFlow(assessmentFlow)) {
+      return false;
+    }
+
+    const baseReport = buildPersonalizedReport({
+      flow: assessmentFlow,
+      employeeEmail,
+    });
+    setFinalReport(baseReport);
+
+    try {
+      const updatedReport = await fetchAndApplyCatalogResources(assessmentFlow, baseReport);
+      if (updatedReport) {
+        setFinalReport(updatedReport);
+      }
+    } catch {
+      // Keep base report if catalog fetch fails.
+    }
+
+    return true;
+  }, [assessmentFlow, employeeEmail]);
+
   return {
     conversationId,
     setConversationId,
@@ -2307,5 +2330,6 @@ export function useChat() {
     loadSessionForEmail,
     forceResumeLatestLocalSession,
     recoverSessionFromProgress,
+    regenerateReport,
   };
 }
