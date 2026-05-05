@@ -52,6 +52,25 @@ const parseRecommendedResourceTitles = (content: string): string[] => {
   return matches.map((match) => match[1].trim());
 };
 
+/**
+ * Parse full resource blocks from the report text, extracting title + url (and
+ * optionally type/why) so that catalog resources keep their original links.
+ * Falls back to title-only entries when fields are missing.
+ */
+const parseFullResourcesFromReport = (content: string): Array<{ title: string; type: string; why: string; url: string }> => {
+  // Each resource block looks like:
+  // **N. Title**
+  // - **Tipo:** ...
+  // - **Por qué te va a servir:** ...
+  // - **Recurso:** https://...
+  const blockPattern = /\*\*\d+\.\s([^\n*]+)\*\*\n- \*\*Tipo:\*\* ([^\n]*)\n- \*\*Por qué te va a servir:\*\* ([^\n]*)\n- \*\*Recurso:\*\* ([^\n]*)/g;
+  const results: Array<{ title: string; type: string; why: string; url: string }> = [];
+  for (const m of content.matchAll(blockPattern)) {
+    results.push({ title: m[1].trim(), type: m[2].trim(), why: m[3].trim(), url: m[4].trim() });
+  }
+  return results;
+};
+
 const EXTERNAL_RESOURCE_FALLBACK = [
   {
     title: 'Improving Communication Skills',
@@ -273,18 +292,27 @@ const buildResourceSectionFromAssigned = (assignedResources: string[], reportCon
 const mergeAssignedResourcesIntoReport = (reportContent: string, assignedResources: string[]): string => {
   if (!reportContent) return reportContent;
   const resourcesSectionPattern = /###\s+(Recursos recomendados|Tus 5 recursos de desarrollo|Recursos de desarrollo)[\s\S]*?(?=\n###\s|\n---REPORTE_FIN---|$)/i;
-  const currentResources = parseRecommendedResourceTitles(reportContent);
 
-  if (currentResources.length > 0) {
-    // Report already has its own resources — only filter strength-linked ones, do NOT mix in assignedResources from another email
-    const replacementBlock = `### Recursos recomendados\n${buildResourceSectionFromAssigned(currentResources, reportContent)}`;
+  // Try to extract full resource blocks (title + url) already in the report
+  const fullResources = parseFullResourcesFromReport(reportContent);
+
+  if (fullResources.length > 0) {
+    // Report already has complete resource blocks — keep them as-is, no dictionary lookup
+    const excludedTitles = parseStrengthResourceExclusions(reportContent);
+    const filtered = fullResources.filter((r) => !excludedTitles.has(r.title));
+    const lines = filtered.slice(0, 5).map((r, i) => {
+      const isInternalWorkshop = /taller\s+interno/i.test(r.title);
+      const resourceValue = isInternalWorkshop ? INTERNAL_WORKSHOP_MESSAGE : r.url;
+      return `**${i + 1}. ${r.title}**\n- **Tipo:** ${r.type}\n- **Por qué te va a servir:** ${r.why}\n- **Recurso:** ${resourceValue}`;
+    }).join('\n\n');
+    const replacementBlock = `### Recursos recomendados\n${lines}`;
     if (resourcesSectionPattern.test(reportContent)) {
       return reportContent.replace(resourcesSectionPattern, replacementBlock);
     }
     return `${reportContent}\n\n${replacementBlock}`;
   }
 
-  // Report has no resources yet — inject from assignedResources (progress record)
+  // Report has no resources yet — inject from assignedResources (progress record, titles only)
   if (assignedResources.length === 0) return reportContent;
   const replacementBlock = `### Recursos recomendados\n${buildResourceSectionFromAssigned(assignedResources, reportContent)}`;
   if (resourcesSectionPattern.test(reportContent)) {
