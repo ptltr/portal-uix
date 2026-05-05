@@ -1050,15 +1050,7 @@ const buildRecommendedResources = (opportunityKeys: string[], strengthKeys: stri
     if (chosen.length >= 5) break;
   }
 
-  if (chosen.length < 5) {
-    for (const key of Object.keys(EXTERNAL_RESOURCES_BY_COMPETENCY)) {
-      if (opportunityKeys.includes(key) || strengthKeys.includes(key)) continue;
-      const candidates = EXTERNAL_RESOURCES_BY_COMPETENCY[key] || [];
-      candidates.forEach((resource) => add(resource));
-      if (chosen.length >= 5) break;
-    }
-  }
-
+  // Only use generic fallbacks — never pull resources from competencies not in the report.
   for (const fallback of FALLBACK_EXTERNAL_RESOURCES) {
     if (chosen.length >= 5) break;
     add(fallback);

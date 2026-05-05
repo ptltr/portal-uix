@@ -293,31 +293,15 @@ const mergeAssignedResourcesIntoReport = (reportContent: string, assignedResourc
   if (!reportContent) return reportContent;
   const resourcesSectionPattern = /###\s+(Recursos recomendados|Tus 5 recursos de desarrollo|Recursos de desarrollo)[\s\S]*?(?=\n###\s|\n---REPORTE_FIN---|$)/i;
 
-  // Try to extract full resource blocks (title + url) already in the report
-  const fullResources = parseFullResourcesFromReport(reportContent);
-
-  if (fullResources.length > 0) {
-    // Report already has complete resource blocks — keep them as-is, no dictionary lookup
-    const excludedTitles = parseStrengthResourceExclusions(reportContent);
-    const filtered = fullResources.filter((r) => !excludedTitles.has(r.title));
-    const lines = filtered.slice(0, 5).map((r, i) => {
-      const isInternalWorkshop = /taller\s+interno/i.test(r.title);
-      const resourceValue = isInternalWorkshop ? INTERNAL_WORKSHOP_MESSAGE : r.url;
-      return `**${i + 1}. ${r.title}**\n- **Tipo:** ${r.type}\n- **Por qué te va a servir:** ${r.why}\n- **Recurso:** ${resourceValue}`;
-    }).join('\n\n');
-    const replacementBlock = `### Recursos recomendados\n${lines}`;
-    if (resourcesSectionPattern.test(reportContent)) {
-      return reportContent.replace(resourcesSectionPattern, replacementBlock);
-    }
-    return `${reportContent}\n\n${replacementBlock}`;
+  // If the report already has a resources section, use it as-is.
+  // The report is the source of truth — never overwrite it with backend titles or local dictionary lookups.
+  if (resourcesSectionPattern.test(reportContent)) {
+    return reportContent;
   }
 
-  // Report has no resources yet — inject from assignedResources (progress record, titles only)
+  // Report has no resources section yet — inject from assignedResources (legacy path).
   if (assignedResources.length === 0) return reportContent;
   const replacementBlock = `### Recursos recomendados\n${buildResourceSectionFromAssigned(assignedResources, reportContent)}`;
-  if (resourcesSectionPattern.test(reportContent)) {
-    return reportContent.replace(resourcesSectionPattern, replacementBlock);
-  }
   return `${reportContent}\n\n${replacementBlock}`;
 };
 
