@@ -677,6 +677,20 @@ export function ResultsScreen({ messages, onRestart, onBackToChat, onRegenerateR
           className="glass-card rounded-3xl p-6 md:p-10 border border-white/8"
           style={{ boxShadow: '0 0 60px rgba(123,63,217,0.1)' }}
         >
+          <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="text-sm text-muted-foreground">
+              Puedes actualizar tus recursos sin volver a contestar la evaluación.
+            </div>
+            <button
+              onClick={handleRegenerateReport}
+              disabled={!onRegenerateReport || isRegeneratingReport}
+              className="inline-flex items-center justify-center gap-2 rounded-xl border border-white/10 px-4 py-2.5 text-sm font-medium text-muted-foreground glass-card hover:border-primary/50 hover:text-foreground transition-all duration-200 disabled:opacity-60 disabled:cursor-not-allowed"
+            >
+              <RefreshCw className="w-4 h-4" />
+              <span>{isRegeneratingReport ? 'Regenerando reporte...' : 'Regenerar reporte'}</span>
+            </button>
+          </div>
+
           {/* Badge */}
           <div className="flex flex-wrap gap-2 mb-6">
             <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium"
