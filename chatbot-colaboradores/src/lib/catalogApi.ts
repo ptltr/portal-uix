@@ -98,7 +98,7 @@ export const getResourcesForCompetencyResult = async (
     return rows
       .filter((row) => normalizeId(row.competency_id) === normalizedCompetencyId)
       .sort((a, b) => getPriorityRank(a.priority) - getPriorityRank(b.priority))
-      .slice(0, 2);
+      .slice(0, 5);
   } catch (error) {
     console.error("Failed to fetch catalog resources", {
       competencyId,

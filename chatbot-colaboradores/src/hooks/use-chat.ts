@@ -754,6 +754,79 @@ const toCatalogResourceResult = (classification?: Classification): CompetencyRes
   return "oportunidad_alta";
 };
 
+type ResourceBucket = "workshop" | "coursera" | "alison" | "video" | "other";
+
+const detectResourceBucket = (resource: ResourceRecommendation): ResourceBucket => {
+  const blob = normalize(`${resource.type} ${resource.title} ${resource.url}`);
+  if (/taller\s+interno|taller\s+uix|capital\s+humano/.test(blob)) return "workshop";
+  if (/coursera/.test(blob)) return "coursera";
+  if (/alison/.test(blob)) return "alison";
+  if (/youtube|video|ted/.test(blob)) return "video";
+  return "other";
+};
+
+const pickDiverseResources = (candidates: ResourceRecommendation[], max = 5): ResourceRecommendation[] => {
+  const unique: ResourceRecommendation[] = [];
+  const seen = new Set<string>();
+  for (const item of candidates) {
+    const key = normalizeTitleKey(item.title);
+    if (!item.title || !item.url || !key || seen.has(key)) continue;
+    seen.add(key);
+    unique.push(item);
+  }
+
+  const byBucket = new Map<ResourceBucket, ResourceRecommendation[]>();
+  const buckets: ResourceBucket[] = ["coursera", "alison", "video", "workshop", "other"];
+  for (const bucket of buckets) byBucket.set(bucket, []);
+  for (const item of unique) {
+    byBucket.get(detectResourceBucket(item))!.push(item);
+  }
+
+  const chosen: ResourceRecommendation[] = [];
+  const chosenKeys = new Set<string>();
+  const caps: Record<ResourceBucket, number> = {
+    workshop: 2,
+    coursera: 1,
+    alison: 1,
+    video: 1,
+    other: 5,
+  };
+  const usedCount: Record<ResourceBucket, number> = {
+    workshop: 0,
+    coursera: 0,
+    alison: 0,
+    video: 0,
+    other: 0,
+  };
+
+  // Pass 1: get at least one item from each key source/type when available.
+  for (const bucket of buckets) {
+    const list = byBucket.get(bucket)!;
+    const first = list[0];
+    if (!first || chosen.length >= max) continue;
+    const key = normalizeTitleKey(first.title);
+    if (!key || chosenKeys.has(key) || usedCount[bucket] >= caps[bucket]) continue;
+    chosen.push(first);
+    chosenKeys.add(key);
+    usedCount[bucket] += 1;
+  }
+
+  // Pass 2: fill remaining slots while respecting caps.
+  for (const bucket of buckets) {
+    const list = byBucket.get(bucket)!;
+    for (const item of list) {
+      if (chosen.length >= max) break;
+      const key = normalizeTitleKey(item.title);
+      if (!key || chosenKeys.has(key) || usedCount[bucket] >= caps[bucket]) continue;
+      chosen.push(item);
+      chosenKeys.add(key);
+      usedCount[bucket] += 1;
+    }
+  }
+
+  return chosen.slice(0, max);
+};
+
 const fetchAndApplyCatalogResources = async (
   flow: AssessmentFlow,
   report: string,
@@ -779,7 +852,6 @@ const fetchAndApplyCatalogResources = async (
     };
 
     for (const legacyKey of opportunityKeys) {
-      if (fetchedResources.length >= 5) break;
       const catalogId = LEGACY_KEY_TO_CATALOG_ID[legacyKey];
       if (!catalogId) continue;
 
@@ -788,25 +860,29 @@ const fetchAndApplyCatalogResources = async (
 
       try {
         const rows = await getResourcesForCompetencyResult(catalogId, result);
-        // Take at most 1 resource per competency (pick the first active one with link+title)
         for (const row of rows) {
           const link = String(row.resource_link ?? row.link ?? row.url ?? "").trim();
           const title = String(row.resource_title ?? row.title ?? row.nombre ?? "").trim();
           if (!link || !title) continue;
           add({
             title,
-            type: String(row.resource_type ?? row.type ?? row.tipo ?? "Curso recomendado").trim(),
+            type: String(row.resource_type ?? row.type ?? row.tipo ?? row.provider ?? "Curso recomendado").trim(),
             why: String(row.resource_description ?? row.description ?? row.descripcion ?? "Te ayudará a desarrollar esta competencia.").trim(),
             url: link,
           });
-          break; // Only 1 resource per competency
         }
       } catch {
         // Skip this competency silently
       }
     }
 
-    if (!fetchedResources.length) {
+    const recommendedResources = pickDiverseResources([
+      ...fetchedResources,
+      ...WORKSHOP_RESOURCES,
+      ...FALLBACK_EXTERNAL_RESOURCES,
+    ], 5);
+
+    if (!recommendedResources.length) {
       // No catalog resources found — replace the placeholder with a clear message
       const pattern = /###\s+(Recursos recomendados|Tus 5 recursos de desarrollo|Recursos de desarrollo)[\s\S]*?(?=\n###\s|\n---REPORTE_FIN---|$)/i;
       if (pattern.test(report)) {
@@ -815,7 +891,7 @@ const fetchAndApplyCatalogResources = async (
       return null;
     }
 
-    const resourceLines = buildResourceBlock(fetchedResources);
+    const resourceLines = buildResourceBlock(recommendedResources);
     const pattern = /###\s+(Recursos recomendados|Tus 5 recursos de desarrollo|Recursos de desarrollo)[\s\S]*?(?=\n###\s|\n---REPORTE_FIN---|$)/i;
     if (pattern.test(report)) {
       return report.replace(pattern, `### Recursos recomendados\n${resourceLines}`);

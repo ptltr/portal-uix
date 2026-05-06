@@ -313,8 +313,8 @@ const mergeAssignedResourcesIntoReport = (reportContent: string, assignedResourc
 const ensureCompetencySections = (reportContent: string): string => {
   if (!reportContent) return reportContent;
 
-  const hasStrengths = /###\s+Tus fortalezas/i.test(reportContent);
-  const hasOpportunities = /###\s+Lo que más puedes potenciar/i.test(reportContent);
+  const hasStrengths = /###\s+(Tus fortalezas|Fortalezas)/i.test(reportContent);
+  const hasOpportunities = /###\s+(Lo que más puedes potenciar|Lo que puedes potenciar|Areas de oportunidad|Áreas de oportunidad)/i.test(reportContent);
   if (hasStrengths && hasOpportunities) return reportContent;
 
   const defaultSections = [
