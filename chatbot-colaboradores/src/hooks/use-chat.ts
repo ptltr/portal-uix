@@ -878,8 +878,7 @@ const fetchAndApplyCatalogResources = async (
 
     const recommendedResources = pickDiverseResources([
       ...fetchedResources,
-      ...WORKSHOP_RESOURCES,
-      ...FALLBACK_EXTERNAL_RESOURCES,
+      ...getContextualResourceCandidates(opportunityKeys),
     ], 5);
 
     if (!recommendedResources.length) {
@@ -930,6 +929,15 @@ const WORKSHOP_RESOURCES: ResourceRecommendation[] = [
     url: INTERNAL_WORKSHOP_URL,
   },
 ];
+
+const WORKSHOP_RESOURCES_BY_COMPETENCY: Record<string, ResourceRecommendation[]> = {
+  "comunicacion-efectiva": [WORKSHOP_RESOURCES[0]],
+  asertividad: [WORKSHOP_RESOURCES[0]],
+  empatia: [WORKSHOP_RESOURCES[0]],
+  "trabajo-en-equipo": [WORKSHOP_RESOURCES[0]],
+  autogestion: [WORKSHOP_RESOURCES[1]],
+  "orientacion-a-resultados": [WORKSHOP_RESOURCES[1]],
+};
 
 const EXTERNAL_RESOURCES_BY_COMPETENCY: Record<string, ResourceRecommendation[]> = {
   "comunicacion-efectiva": [
@@ -1096,6 +1104,41 @@ const FALLBACK_EXTERNAL_RESOURCES: ResourceRecommendation[] = [
   },
 ];
 
+const FALLBACK_EXTERNAL_RESOURCES_BY_COMPETENCY: Record<string, ResourceRecommendation[]> = {
+  "comunicacion-efectiva": [FALLBACK_EXTERNAL_RESOURCES[0]],
+  asertividad: [FALLBACK_EXTERNAL_RESOURCES[0]],
+  empatia: [FALLBACK_EXTERNAL_RESOURCES[0]],
+  "trabajo-en-equipo": [FALLBACK_EXTERNAL_RESOURCES[0]],
+  autogestion: [FALLBACK_EXTERNAL_RESOURCES[1]],
+  "orientacion-a-resultados": [FALLBACK_EXTERNAL_RESOURCES[1]],
+  "solucion-de-problemas": [FALLBACK_EXTERNAL_RESOURCES[1]],
+  proactividad: [FALLBACK_EXTERNAL_RESOURCES[1]],
+  "mentalidad-de-negocio": [FALLBACK_EXTERNAL_RESOURCES[2]],
+  "aprendizaje-continuo": [FALLBACK_EXTERNAL_RESOURCES[2]],
+  "toma-de-decisiones": [FALLBACK_EXTERNAL_RESOURCES[2]],
+};
+
+const getContextualResourceCandidates = (opportunityKeys: string[]): ResourceRecommendation[] => {
+  const contextual: ResourceRecommendation[] = [];
+  const seen = new Set<string>();
+
+  const add = (resource?: ResourceRecommendation) => {
+    if (!resource) return;
+    const key = normalizeTitleKey(resource.title);
+    if (!key || seen.has(key)) return;
+    seen.add(key);
+    contextual.push(resource);
+  };
+
+  for (const key of opportunityKeys) {
+    (WORKSHOP_RESOURCES_BY_COMPETENCY[key] || []).forEach(add);
+    (EXTERNAL_RESOURCES_BY_COMPETENCY[key] || []).forEach(add);
+    (FALLBACK_EXTERNAL_RESOURCES_BY_COMPETENCY[key] || []).forEach(add);
+  }
+
+  return contextual;
+};
+
 const buildResourceBlock = (resources: ResourceRecommendation[]): string => {
   return resources.slice(0, 5).map((resource, index) => (
     // Internal workshops must show contact text only, without links.
@@ -1124,19 +1167,10 @@ const buildRecommendedResources = (opportunityKeys: string[], strengthKeys: stri
     chosen.push(resource);
   };
 
-  // Always keep workshops visible among recommendations.
-  WORKSHOP_RESOURCES.forEach((resource) => add(resource));
-
   for (const key of opportunityKeys) {
-    const candidates = EXTERNAL_RESOURCES_BY_COMPETENCY[key] || [];
+    const candidates = getContextualResourceCandidates([key]);
     candidates.forEach((resource) => add(resource));
     if (chosen.length >= 5) break;
-  }
-
-  // Only use generic fallbacks — never pull resources from competencies not in the report.
-  for (const fallback of FALLBACK_EXTERNAL_RESOURCES) {
-    if (chosen.length >= 5) break;
-    add(fallback);
   }
 
   return chosen.slice(0, 5);
